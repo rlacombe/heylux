@@ -4,15 +4,54 @@ Provides time-based lighting recommendations backed by research on
 melanopsin sensitivity, melatonin suppression, and cortisol regulation.
 """
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import tool
 
+CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+LIGHT_MAP_FILE = CONFIG_DIR / "light_map.json"
 
-# Circadian waypoints: (hour, kelvin, brightness_pct, active_lights, mode_name)
+# Default mapping from generic zone names to light groups.
+# Users can override via light_map.json or the configure_light_map tool.
+DEFAULT_LIGHT_MAP = {
+    "floor": ["Lantern", "Night stand"],
+    "ceiling": ["Ceiling lamp 1", "Ceiling lamp 2", "Ceiling lamp 3"],
+    "desk": ["Desk lamp"],
+}
+
+
+def _load_light_map() -> dict[str, list[str]]:
+    """Load light zone mapping, falling back to defaults."""
+    if LIGHT_MAP_FILE.exists():
+        try:
+            return json.loads(LIGHT_MAP_FILE.read_text())
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return DEFAULT_LIGHT_MAP
+
+
+def _save_light_map(mapping: dict[str, list[str]]) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    LIGHT_MAP_FILE.write_text(json.dumps(mapping, indent=2))
+
+
+def _resolve_light_zones(zone_names: list[str]) -> list[str]:
+    """Resolve generic zone names to actual light names."""
+    light_map = _load_light_map()
+    resolved = []
+    for zone in zone_names:
+        lights = light_map.get(zone, [zone])  # fall back to zone name as-is
+        resolved.extend(lights)
+    return resolved
+
+
+# Circadian waypoints: (hour, kelvin, brightness_pct, active_zones, mode_name)
 # Based on melanopic EDI targets and chronobiology research.
 # Brightness is 0-100%, kelvin is color temperature.
+# Zone names ("floor", "ceiling", "desk") are resolved to actual lights via light_map.json.
 CIRCADIAN_WAYPOINTS = [
     (6.0, 2000, 5, ["floor"], "Pre-dawn"),
     (7.0, 4000, 60, ["ceiling"], "Energize"),
@@ -126,7 +165,7 @@ def get_circadian_state(now: datetime | None = None) -> dict[str, Any]:
     return {
         "kelvin": kelvin,
         "brightness_pct": brightness,
-        "active_lights": prev[3],
+        "active_lights": _resolve_light_zones(prev[3]),
         "mode_name": prev[4],
         "time": now.strftime("%H:%M"),
     }
@@ -214,3 +253,45 @@ async def get_circadian_recommendation(args: dict[str, Any]) -> dict[str, Any]:
         )
 
     return {"content": [{"type": "text", "text": explanation}]}
+
+
+@tool(
+    "configure_light_map",
+    "Configure which physical lights correspond to each circadian zone. "
+    "The circadian engine uses zones: 'floor' (ambient/low), 'ceiling' (overhead), "
+    "'desk' (task lighting). Map each zone to your actual light names. "
+    "This determines which lights turn on/off at different times of day.",
+    {
+        "type": "object",
+        "properties": {
+            "floor": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lights for the 'floor' zone (ambient, low-level). Used for pre-dawn, evening, night.",
+            },
+            "ceiling": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lights for the 'ceiling' zone (overhead). Used for daytime focus and energy.",
+            },
+            "desk": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lights for the 'desk' zone (task lighting). Used for focus and reading.",
+            },
+        },
+        "required": ["floor", "ceiling", "desk"],
+    },
+)
+async def configure_light_map(args: dict[str, Any]) -> dict[str, Any]:
+    mapping = {
+        "floor": args["floor"],
+        "ceiling": args["ceiling"],
+        "desk": args["desk"],
+    }
+    _save_light_map(mapping)
+    lines = ["Light zones configured:"]
+    for zone, lights in mapping.items():
+        lines.append(f"  - **{zone}**: {', '.join(lights)}")
+    lines.append("\nThe circadian engine will now use these lights at the right times of day.")
+    return {"content": [{"type": "text", "text": "\n".join(lines)}]}

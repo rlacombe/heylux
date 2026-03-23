@@ -73,6 +73,7 @@ Lux: It's 3:15 PM — Afternoon mode. 6000K at 95% on ceiling and desk.
 - **Calendar alerts** — synchronized light pulses before meetings (slow amber wave at T-5min, fast blue chirp at T-15s)
 - **Persistent daemon** — boots once, stays warm, every command after that is fast
 - **User memory** — Lux learns your name, room layout, sleep habits across sessions
+- **Voice input** — `lux listen` or `lux --voice` for hands-free control via local Whisper
 - **Built-in Hue control** — no external MCP servers needed
 
 ## Architecture
@@ -171,6 +172,10 @@ lux "setup weather"        # auto-detect location, connect Open-Meteo
 
 # Calendar alerts
 lux setup calendar         # choose which calendars to monitor
+
+# Voice input (requires: uv sync --extra voice)
+lux listen                 # one-shot: speak → transcribe → execute
+lux --voice                # voice REPL: continuous listening
 
 # Natural language (~ 5s, via Claude)
 lux "make it cozy"

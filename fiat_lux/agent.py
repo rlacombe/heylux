@@ -74,6 +74,8 @@ HELP_TEXT = """\
   [lux.highlight]lux restart[/lux.highlight]                  Restart the daemon
   [lux.highlight]lux setup calendar[/lux.highlight]           Configure calendar alerts
   [lux.highlight]lux setup weather[/lux.highlight]            Connect weather data
+  [lux.highlight]lux listen[/lux.highlight]                   Voice command (one-shot)
+  [lux.highlight]lux --voice, -V[/lux.highlight]              Voice REPL (continuous)
   [lux.highlight]lux --help, -h[/lux.highlight]               Show this help
   [lux.highlight]lux --version, -v[/lux.highlight]            Show version
 
@@ -86,10 +88,13 @@ HELP_TEXT = """\
   [lux.highlight]lux "candle"[/lux.highlight]                 Start candle flicker mode
   [lux.highlight]lux "make it cozy"[/lux.highlight]           Ask Lux (uses AI)
 
-[lux.title]Shortcuts:[/lux.title]
+[lux.title]Shortcuts (in REPL):[/lux.title]
   [lux.dim]on/off, brighter/dimmer, circadian, breathe/candle/stop,
   and any saved routine name are handled instantly (<1s).
-  Everything else goes through Lux's AI for natural language control.[/lux.dim]
+  Everything else goes through Lux's AI for natural language control.
+
+  Note: "lux stop" controls the daemon. Type "stop" inside the
+  REPL to stop ambient modes (candle, breathing).[/lux.dim]
 """
 
 
@@ -310,9 +315,79 @@ def main() -> None:
     elif args[0] == "setup" and len(args) > 1 and args[1] == "weather":
         prompt = "Please set up weather integration. Ask me for permission before using location services."
         _send(prompt)
+    elif args[0] == "listen":
+        _listen_once()
+    elif args[0] in ("--voice", "-V"):
+        _voice_interactive()
     else:
         prompt = " ".join(args)
         _send(prompt)
+
+
+def _listen_once() -> None:
+    """One-shot voice command: record → transcribe → send."""
+    try:
+        from fiat_lux.voice import listen_once
+    except ImportError:
+        console.print(
+            "[lux.error]Voice dependencies not installed.[/lux.error]\n"
+            "[lux.dim]Install with: uv sync --extra voice[/lux.dim]"
+        )
+        return
+
+    if not _daemon_running():
+        _start_daemon()
+
+    console.print("[lux.highlight]Listening...[/lux.highlight] (speak, then pause to send)")
+    try:
+        text = listen_once()
+    except ImportError as e:
+        console.print(f"[lux.error]{e}[/lux.error]")
+        return
+    if text:
+        console.print(f"[lux.user]You:[/lux.user] {text}\n")
+        _send(text)
+    else:
+        console.print("[lux.dim]No speech detected.[/lux.dim]")
+
+
+def _voice_interactive() -> None:
+    """Voice REPL — continuous listen loop."""
+    try:
+        from fiat_lux.voice import listen_once
+    except ImportError:
+        console.print(
+            "[lux.error]Voice dependencies not installed.[/lux.error]\n"
+            "[lux.dim]Install with: uv sync --extra voice[/lux.dim]"
+        )
+        return
+
+    if not _daemon_running():
+        _start_daemon()
+
+    console.print(
+        "[lux.title]Lux[/lux.title] [lux.dim]--[/lux.dim] "
+        "[lux.text]voice mode[/lux.text]\n"
+        "[lux.dim]Speak a command. Press Ctrl+C to exit.[/lux.dim]\n"
+    )
+
+    while True:
+        try:
+            console.print("[lux.highlight]Listening...[/lux.highlight]")
+            try:
+                text = listen_once()
+            except ImportError as e:
+                console.print(f"[lux.error]{e}[/lux.error]")
+                break
+            if text:
+                console.print(f"[lux.user]You:[/lux.user] {text}\n")
+                _send(text)
+                console.print()
+            else:
+                console.print("[lux.dim]...[/lux.dim]")
+        except KeyboardInterrupt:
+            console.print("\n[lux.dim]Goodbye![/lux.dim]")
+            break
 
 
 if __name__ == "__main__":

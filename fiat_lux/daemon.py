@@ -30,7 +30,7 @@ from fiat_lux.shortcuts import (
     SHORTCUT_CANDLE_START,
 )
 from fiat_lux.mcp.calendar_tools import ALL_CALENDAR_TOOLS
-from fiat_lux.mcp.circadian import get_circadian_recommendation
+from fiat_lux.mcp.circadian import get_circadian_recommendation, configure_light_map
 from fiat_lux.mcp.hue import ALL_HUE_TOOLS, get_lights_context
 from fiat_lux.mcp.memory import ALL_MEMORY_TOOLS, get_profile_context
 from fiat_lux.mcp.weather_tools import ALL_WEATHER_TOOLS
@@ -94,6 +94,7 @@ def _refresh_dynamic_prompt(options: ClaudeAgentOptions) -> None:
 def _build_options() -> ClaudeAgentOptions:
     all_sdk_tools = [
         get_circadian_recommendation,
+        configure_light_map,
         *ALL_HUE_TOOLS,
         *ALL_MEMORY_TOOLS,
         *ALL_ROUTINE_TOOLS,

@@ -11,6 +11,12 @@ dependencies = [
     "rich",
 ]
 
+[project.optional-dependencies]
+voice = [
+    "openai-whisper",
+    "sounddevice",
+]
+
 [tool.uv]
 package = true
 
