@@ -49,7 +49,7 @@ SOCKET_PATH = CONFIG_DIR / "lux.sock"
 PID_FILE = CONFIG_DIR / "lux.pid"
 HISTORY_FILE = CONFIG_DIR / "history"
 
-SEND_TIMEOUT = 30  # seconds
+SEND_TIMEOUT = 120  # seconds — breathing pulses and tool calls can take a while
 
 
 def _version() -> str:
@@ -145,13 +145,28 @@ def _start_daemon() -> None:
 
 
 def _stop_daemon() -> None:
-    """Stop the daemon."""
+    """Stop the daemon and clean up stale files."""
     if not _daemon_running():
+        # Clean up stale socket if process is gone
+        if SOCKET_PATH.exists():
+            SOCKET_PATH.unlink(missing_ok=True)
         console.print("[lux.dim]Daemon not running.[/lux.dim]")
         return
 
     pid = int(PID_FILE.read_text().strip())
     os.kill(pid, signal.SIGTERM)
+
+    # Wait for process to actually die and clean up
+    for _ in range(20):
+        try:
+            os.kill(pid, 0)
+            time.sleep(0.25)
+        except ProcessLookupError:
+            break
+
+    # Clean up stale files the daemon may not have removed
+    PID_FILE.unlink(missing_ok=True)
+    SOCKET_PATH.unlink(missing_ok=True)
     console.print("[lux.dim]Daemon stopped.[/lux.dim]")
 
 

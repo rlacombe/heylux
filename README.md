@@ -81,10 +81,10 @@ Lux runs as a daemon with two execution paths:
 
 ```
 User input → CLI
-               │
-               ├─ Shortcuts (regex + routines)  →  direct phue  < 1s
-               │
-               └─ Claude (persistent session)   →  tool calls   ~ 5s
+              │
+              ├─ Shortcuts (regex + routines)  →  direct phue  < 1s
+              │
+              └─ Claude (persistent session)   →  tool calls   ~ 5s
 ```
 
 **Shortcuts** pattern-match common commands, named routines, and ambient modes, executing directly via phue. No LLM, no network latency.

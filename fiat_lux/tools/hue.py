@@ -448,21 +448,28 @@ async def set_group(args: dict[str, Any]) -> dict[str, Any]:
                 "type": "number",
                 "description": "Number of breath cycles. Default 3.",
             },
+            "style": {
+                "type": "string",
+                "description": "Pulse style: 'chirp' (fast snappy, default) or 'slow' (gentle breathing wave).",
+                "enum": ["chirp", "slow"],
+            },
         },
         "required": ["lights"],
     },
 )
 async def breathing_pulse_tool(args: dict[str, Any]) -> dict[str, Any]:
+    import asyncio
     from fiat_lux.pulse import breathing_pulse as _pulse
 
     lights = args["lights"]
-    hue = int(args.get("hue", 8000))
+    hue = int(args.get("hue", 46920))  # default blue
     sat = int(args.get("saturation", 200))
     breaths = int(args.get("breaths", 3))
+    style = args.get("style", "chirp")
 
     try:
-        for light_name in lights:
-            _pulse(light_name, hue=hue, saturation=sat, breaths=breaths)
+        # All lights pulse in sync via a single call
+        await asyncio.to_thread(_pulse, lights, hue=hue, saturation=sat, breaths=breaths, style=style)
         return _text(f"Pulsed {', '.join(lights)} ({breaths} breaths).")
     except Exception as e:
         return _error(f"Pulse failed: {e}")

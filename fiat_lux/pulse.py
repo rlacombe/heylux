@@ -42,67 +42,80 @@ def _restore_light_state(bridge, light_id: int, saved: dict) -> None:
 
 
 def breathing_pulse(
-    light_name: str = "Desk lamp",
+    light_names: str | list[str] = "Desk lamp",
     hue: int = 46920,
     saturation: int = 160,
     breaths: int = 2,
+    style: str = "chirp",
 ) -> None:
-    """Perform a breathing pulse on a single light.
+    """Perform a synchronized breathing pulse on one or more lights.
 
     Args:
-        light_name: Name of the light to pulse.
+        light_names: Light name(s) to pulse. String or list of strings.
         hue: Hue value (46920=blue, 8000=amber).
         saturation: Color saturation (0-254).
         breaths: Number of breath cycles.
+        style: "chirp" (fast, snappy) or "slow" (gentle breathing wave).
     """
+    if isinstance(light_names, str):
+        light_names = [light_names]
+
     b = _get_bridge()
 
-    # Find light by name
-    light_id = None
-    for light in b.lights:
-        if light.name.lower() == light_name.lower():
-            light_id = light.light_id
-            break
-    if light_id is None:
+    # Resolve all light IDs
+    name_map = {l.name.lower(): l.light_id for l in b.lights}
+    light_ids = []
+    for name in light_names:
+        lid = name_map.get(name.lower())
+        if lid is not None:
+            light_ids.append(lid)
+    if not light_ids:
         return
 
-    saved = _save_light_state(b, light_id)
+    # Save all states
+    saved = {lid: _save_light_state(b, lid) for lid in light_ids}
+
+    def _set_all(cmd: dict) -> None:
+        for lid in light_ids:
+            b.set_light(lid, cmd)
+
+    # Timing by style
+    if style == "slow":
+        snap_on = 15  # 1.5s inhale
+        fade_out = 25  # 2.5s exhale
+        pause_on = 1.7
+        pause_off = 2.7
+    else:  # chirp
+        snap_on = 3  # 0.3s snap
+        fade_out = 5  # 0.5s fade
+        pause_on = 0.5
+        pause_off = 0.7
 
     try:
-        # Initial inhale — fade into color
-        b.set_light(light_id, {
+        # Initial flash
+        _set_all({
             "on": True,
             "hue": hue,
             "sat": saturation,
             "bri": 254,
-            "transitiontime": 20,  # 2s inhale
+            "transitiontime": snap_on,
         })
-        time.sleep(2.2)
+        time.sleep(pause_on)
 
         for _ in range(breaths - 1):
-            # Exhale
-            b.set_light(light_id, {
-                "bri": 40,
-                "transitiontime": 30,  # 3s exhale
-            })
-            time.sleep(3.2)
+            _set_all({"bri": 20, "transitiontime": fade_out})
+            time.sleep(pause_off)
 
-            # Inhale
-            b.set_light(light_id, {
-                "bri": 254,
-                "transitiontime": 20,  # 2s inhale
-            })
-            time.sleep(2.2)
+            _set_all({"bri": 254, "transitiontime": snap_on})
+            time.sleep(pause_on)
 
-        # Final exhale
-        b.set_light(light_id, {
-            "bri": 40,
-            "transitiontime": 30,
-        })
-        time.sleep(3.2)
+        # Final fade out
+        _set_all({"bri": 20, "transitiontime": fade_out})
+        time.sleep(pause_off)
 
     finally:
-        _restore_light_state(b, light_id, saved)
+        for lid, state in saved.items():
+            _restore_light_state(b, lid, state)
 
 
 # Preset pulses for calendar alerts
@@ -131,15 +144,13 @@ def _get_alert_lights() -> list[str]:
 
 
 def pulse_heads_up() -> None:
-    """Amber breathing pulse — meeting in 5 minutes."""
-    for light in _get_alert_lights():
-        breathing_pulse(light, hue=AMBER_HUE, saturation=200, breaths=4)
+    """Slow amber pulse — meeting in 5 minutes."""
+    breathing_pulse(_get_alert_lights(), hue=AMBER_HUE, saturation=200, breaths=4, style="slow")
 
 
 def pulse_starting_now() -> None:
-    """Blue breathing pulse — meeting in 15 seconds."""
-    for light in _get_alert_lights():
-        breathing_pulse(light, hue=BLUE_HUE, saturation=160, breaths=3)
+    """Fast blue chirp — meeting in 15 seconds."""
+    breathing_pulse(_get_alert_lights(), hue=BLUE_HUE, saturation=200, breaths=5, style="chirp")
 
 
 # ---------------------------------------------------------------------------
