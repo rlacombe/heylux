@@ -459,7 +459,7 @@ def _listen_once() -> None:
     if not _daemon_running():
         _start_daemon()
 
-    from fiat_lux.voice import wait_for_speech
+    from fiat_lux.voice import wait_for_speech, stop_speech
 
     console.print(
         "[lux.title]Lux[/lux.title] [lux.dim]--[/lux.dim] "
@@ -467,24 +467,25 @@ def _listen_once() -> None:
         "[lux.dim]Speak naturally. Press Ctrl+C to exit.[/lux.dim]\n"
     )
 
-    while True:
-        try:
-            console.print("[lux.highlight]Listening...[/lux.highlight]")
+    try:
+        while True:
             try:
+                console.print("[lux.highlight]Listening...[/lux.highlight]")
                 text = listen_once()
-            except ImportError as e:
-                console.print(f"[lux.error]{e}[/lux.error]")
-                return
-            if text:
-                console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
-                _send_with_tts(text, speak)
-                wait_for_speech()
-                console.print()
-            else:
-                console.print("[lux.dim]...[/lux.dim]")
-        except KeyboardInterrupt:
-            console.print("\n[lux.dim]Goodbye![/lux.dim]")
-            return
+                if text:
+                    console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
+                    _send_with_tts(text, speak)
+                    wait_for_speech()
+                    console.print()
+                else:
+                    console.print("[lux.dim]...[/lux.dim]")
+            except KeyboardInterrupt:
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop_speech()
+        console.print("\n[lux.dim]Goodbye![/lux.dim]")
 
 
 def _voice_interactive() -> None:

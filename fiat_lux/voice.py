@@ -279,7 +279,18 @@ _speak_threads: list[threading.Thread] = []
 def wait_for_speech() -> None:
     """Wait for all pending TTS to finish playing. Call before exiting."""
     for t in _speak_threads:
-        t.join(timeout=30)
+        t.join(timeout=15)
+    _speak_threads.clear()
+
+
+def stop_speech() -> None:
+    """Kill any running TTS playback immediately."""
+    import signal as _signal
+    # Kill any afplay processes
+    try:
+        subprocess.run(["pkill", "-f", "afplay"], capture_output=True)
+    except Exception:
+        pass
     _speak_threads.clear()
 
 
