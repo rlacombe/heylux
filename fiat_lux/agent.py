@@ -229,7 +229,7 @@ def _send_with_tts(prompt: str, speak_fn) -> None:
 
 
 async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
-    """Send prompt, display response, and speak it."""
+    """Send prompt, display response, and speak each text block as it arrives."""
     reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
 
     try:
@@ -237,7 +237,6 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
         await writer.drain()
 
         first_text = True
-        all_text = []
         while True:
             line = await asyncio.wait_for(reader.readline(), timeout=SEND_TIMEOUT)
             if not line:
@@ -251,17 +250,14 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
                     console.print("[lux.label]Lux:[/lux.label]")
                     first_text = False
                 console.print(Markdown(msg["text"]), style="lux.text")
-                all_text.append(msg["text"])
+                # Speak immediately — runs in background thread
+                speak_fn(msg["text"])
             elif msg["type"] == "tool":
                 console.print(f"[lux.tool]  -> {msg['name']}[/lux.tool]")
             elif msg["type"] == "error":
                 console.print(f"[lux.error]Error: {msg['text']}[/lux.error]")
             elif msg["type"] == "done":
                 break
-
-        # Speak the combined response
-        if all_text:
-            speak_fn(" ".join(all_text))
 
     except asyncio.TimeoutError:
         console.print("[lux.error]Daemon not responding (timed out).[/lux.error]")

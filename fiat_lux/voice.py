@@ -204,26 +204,50 @@ def listen_once() -> str | None:
 # Text-to-speech via macOS `say`
 # ---------------------------------------------------------------------------
 
-TTS_VOICE = "Samantha"  # high-quality macOS voice
+TTS_VOICE = "en-US-EmmaNeural"
 
 
 def speak(text: str, voice: str = TTS_VOICE) -> None:
-    """Speak text aloud using macOS TTS. Non-blocking."""
-    if sys.platform != "darwin":
-        return
-    # Strip markdown-style formatting that sounds weird spoken
+    """Speak text aloud using Edge TTS (neural voice). Non-blocking."""
+    import threading
+
+    # Strip markdown formatting that sounds weird spoken
     clean = text.replace("**", "").replace("*", "").replace("`", "")
-    # Limit length — don't read back huge responses
+    # Limit length
     if len(clean) > 500:
         clean = clean[:500] + "..."
-    try:
-        subprocess.Popen(
-            ["say", "-v", voice, clean],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except FileNotFoundError:
-        pass  # `say` not available
+
+    def _speak():
+        import asyncio
+        import tempfile
+        try:
+            import edge_tts
+
+            async def _generate_and_play():
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                    tmp = f.name
+                comm = edge_tts.Communicate(clean, voice)
+                await comm.save(tmp)
+                subprocess.run(
+                    ["open", tmp],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            asyncio.run(_generate_and_play())
+        except Exception:
+            # Fall back to macOS say
+            try:
+                subprocess.run(
+                    ["say", clean],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError:
+                pass
+
+    # Run in background thread so it doesn't block
+    threading.Thread(target=_speak, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
