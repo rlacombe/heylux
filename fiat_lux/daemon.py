@@ -291,7 +291,9 @@ async def _handle_client(
                 "Reply in 1-2 short sentences ONLY. No emoji, no markdown, no bullet lists. "
                 "Be a quick voice assistant. "
                 "ALWAYS start by stating what you're about to do BEFORE calling any tool. "
-                "Example: 'Setting your lights to cool white for coding.' then call the tools.]\n\n"
+                "If the user asks for a mode that matches a saved routine name, "
+                "use list_routines to check, then apply it with the exact light settings. "
+                "Example: 'Setting your lights to coding mode.' then call the tools.]\n\n"
                 + prompt
             )
         else:
