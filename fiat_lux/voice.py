@@ -82,32 +82,38 @@ def record_until_silence(
     max_chunks = int(max_seconds / 0.1)
     has_speech = False
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32") as stream:
-        for _ in range(max_chunks):
-            audio, _ = stream.read(chunk_size)
-            chunks.append(audio.copy())
+    from rich.live import Live
+    from rich.text import Text
 
-            level = _rms(audio)
+    live_ctx = Live("", console=_console, refresh_per_second=10) if _console else None
+    if live_ctx:
+        live_ctx.start()
 
-            # Show volume meter if console is available
-            if _console is not None:
-                bar = format_volume_bar(level)
-                status = "[lux.highlight]recording[/lux.highlight]" if has_speech else "[lux.dim]waiting[/lux.dim]"
-                _console.print(f"\r  {bar} {status}", end="")
+    try:
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32") as stream:
+            for _ in range(max_chunks):
+                audio, _ = stream.read(chunk_size)
+                chunks.append(audio.copy())
 
-            if level > threshold:
-                has_speech = True
-                silence_chunks = 0
-            else:
-                silence_chunks += 1
+                level = _rms(audio)
 
-            # Stop after enough silence, but only if we heard speech first
-            if has_speech and silence_chunks >= silence_limit:
-                break
+                # Update volume meter
+                if live_ctx is not None:
+                    bar = format_volume_bar(level)
+                    status = "recording" if has_speech else "waiting"
+                    live_ctx.update(Text(f"  {bar} {status}"))
 
-    # Clear the volume meter line
-    if _console is not None:
-        _console.print("\r" + " " * 60 + "\r", end="")
+                if level > threshold:
+                    has_speech = True
+                    silence_chunks = 0
+                else:
+                    silence_chunks += 1
+
+                if has_speech and silence_chunks >= silence_limit:
+                    break
+    finally:
+        if live_ctx:
+            live_ctx.stop()
 
     if not has_speech:
         return None
