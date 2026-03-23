@@ -31,3 +31,4 @@ packages = ["fresnel"]
 
 [project.scripts]
 fresnel = "fresnel.agent:main"
+fresnel-daemon = "fresnel.daemon:main"

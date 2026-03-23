@@ -1,121 +1,136 @@
-"""Fresnel — A chronobiology-powered lighting agent for Philips Hue.
+"""Fresnel CLI — thin client that talks to the Fresnel daemon.
 
 Usage:
     fresnel                          Interactive mode
     fresnel "make it cozy"           One-shot command
-    fresnel circadian                Apply current circadian recommendation
-    fresnel setup                    Guide Hue Bridge setup
-
-Three execution tiers:
-    1. Shortcuts  — regex-matched common commands, no LLM, <0.5s
-    2. LLM engine — OpenAI-compatible API (LM Studio / OpenRouter), ~2-5s
-    3. Agent SDK  — Claude Code via claude_agent_sdk (fallback), ~14s
+    fresnel start                    Start the daemon
+    fresnel stop                     Stop the daemon
+    fresnel status                   Check daemon status
 """
 
+import asyncio
+import json
 import os
+import signal
+import subprocess
 import sys
+import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 
-from fresnel.shortcuts import try_shortcut
-
 load_dotenv()
 
 console = Console()
 
+SOCKET_PATH = Path.home() / ".config" / "fresnel" / "fresnel.sock"
+PID_FILE = Path.home() / ".config" / "fresnel" / "fresnel.pid"
 
-def _run_prompt(prompt: str) -> None:
-    """Route a prompt through the three execution tiers."""
-    # Tier 1: direct shortcuts (no LLM)
-    result = try_shortcut(prompt)
-    if result is not None:
-        console.print(result)
+
+def _daemon_running() -> bool:
+    """Check if the daemon is alive."""
+    if not PID_FILE.exists():
+        return False
+    try:
+        pid = int(PID_FILE.read_text().strip())
+        os.kill(pid, 0)  # signal 0 = check if process exists
+        return True
+    except (ProcessLookupError, ValueError):
+        # Stale PID file
+        PID_FILE.unlink(missing_ok=True)
+        return False
+
+
+def _start_daemon() -> None:
+    """Start the daemon in the background."""
+    if _daemon_running():
+        console.print("[dim]Daemon already running.[/dim]")
         return
 
-    # Tier 2: lightweight LLM engine (OpenAI-compatible)
-    engine = os.getenv("FRESNEL_ENGINE", "llm")
+    console.print("[dim]Starting Lux daemon...[/dim]")
 
-    if engine == "llm":
-        from fresnel.engine import chat
+    # Start daemon as a background process
+    log_path = Path.home() / ".config" / "fresnel" / "daemon.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(log_path, "a")
 
-        try:
-            response = chat(prompt)
-            console.print(Markdown(response))
-        except Exception as e:
-            console.print(f"[yellow]LLM engine error: {e}[/yellow]")
-            console.print("[dim]Falling back to Agent SDK...[/dim]")
-            _run_agent_sdk(prompt)
+    subprocess.Popen(
+        [sys.executable, "-m", "fresnel.daemon"],
+        stdout=log_file,
+        stderr=log_file,
+        start_new_session=True,
+    )
+
+    # Wait for socket to appear
+    for _ in range(30):
+        if SOCKET_PATH.exists():
+            console.print("[dim]Lux is ready.[/dim]")
+            return
+        time.sleep(0.5)
+
+    console.print("[red]Lux failed to start. Check ~/.config/fresnel/daemon.log[/red]")
+
+
+def _stop_daemon() -> None:
+    """Stop the daemon."""
+    if not _daemon_running():
+        console.print("[dim]Daemon not running.[/dim]")
         return
 
-    # Tier 3: full Agent SDK
-    _run_agent_sdk(prompt)
+    pid = int(PID_FILE.read_text().strip())
+    os.kill(pid, signal.SIGTERM)
+    console.print("[dim]Daemon stopped.[/dim]")
 
 
-def _run_agent_sdk(prompt: str) -> None:
-    """Run via Claude Agent SDK (heaviest, most capable)."""
-    import asyncio
+async def _send_to_daemon(prompt: str) -> None:
+    """Send a prompt to the daemon and stream the response."""
+    reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
 
-    from claude_agent_sdk import (
-        AssistantMessage,
-        ClaudeAgentOptions,
-        ResultMessage,
-        SystemMessage,
-        create_sdk_mcp_server,
-        query,
-    )
+    writer.write(json.dumps({"prompt": prompt}).encode() + b"\n")
+    await writer.drain()
 
-    from fresnel.tools.circadian import get_circadian_recommendation
-    from fresnel.tools.hue import ALL_HUE_TOOLS, get_lights_context
-    from fresnel.tools.memory import ALL_MEMORY_TOOLS, get_profile_context
-    from pathlib import Path
+    while True:
+        line = await reader.readline()
+        if not line:
+            break
 
-    BASE_SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.md").read_text()
+        msg = json.loads(line.decode())
 
-    parts = [BASE_SYSTEM_PROMPT]
-    profile_ctx = get_profile_context()
-    if profile_ctx:
-        parts.append(profile_ctx)
-    lights_ctx = get_lights_context()
-    if lights_ctx:
-        parts.append(lights_ctx)
-    system_prompt = "\n\n".join(parts)
+        if msg["type"] == "text":
+            console.print(Markdown(msg["text"]))
+        elif msg["type"] == "tool":
+            console.print(f"[dim]→ {msg['name']}[/dim]")
+        elif msg["type"] == "error":
+            console.print(f"[red]Error: {msg['text']}[/red]")
+        elif msg["type"] == "done":
+            break
 
-    fresnel_tools = create_sdk_mcp_server(
-        name="fresnel",
-        version="0.1.0",
-        tools=[get_circadian_recommendation, *ALL_HUE_TOOLS, *ALL_MEMORY_TOOLS],
-    )
+    writer.close()
+    await writer.wait_closed()
 
-    options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        mcp_servers={"fresnel": fresnel_tools},
-        allowed_tools=["mcp__fresnel__*"],
-        permission_mode="acceptEdits",
-        max_turns=10,
-        setting_sources=[],
-    )
 
-    async def _stream():
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if hasattr(block, "text") and block.text:
-                        console.print(Markdown(block.text))
-                    elif hasattr(block, "name"):
-                        console.print(f"[dim]→ {block.name}[/dim]")
-            elif isinstance(message, ResultMessage):
-                if message.subtype != "success":
-                    console.print(f"[red]Error: {message.subtype}[/red]")
+def _send(prompt: str) -> None:
+    """Send a prompt, auto-starting the daemon if needed."""
+    if not _daemon_running():
+        _start_daemon()
 
-    asyncio.run(_stream())
+    try:
+        asyncio.run(_send_to_daemon(prompt))
+    except (ConnectionRefusedError, FileNotFoundError):
+        console.print("[yellow]Connection lost. Restarting daemon...[/yellow]")
+        _start_daemon()
+        asyncio.run(_send_to_daemon(prompt))
 
 
 def _interactive() -> None:
-    """Run Fresnel in interactive mode."""
+    """Interactive REPL — all messages go through the daemon."""
+    if not _daemon_running():
+        _start_daemon()
+
     console.print(
-        "[bold]Fresnel[/bold] — your chronobiology-powered lighting assistant\n"
+        "[bold]Lux[/bold] — your chronobiology-powered lighting assistant\n"
         "[dim]Type a command, or 'quit' to exit.[/dim]\n"
     )
 
@@ -133,7 +148,7 @@ def _interactive() -> None:
             break
 
         console.print()
-        _run_prompt(user_input)
+        _send(user_input)
         console.print()
 
 
@@ -143,17 +158,23 @@ def main() -> None:
 
     if not args:
         _interactive()
-    elif args[0] == "setup":
-        # Setup always uses Agent SDK for the full conversational flow
-        os.environ["FRESNEL_ENGINE"] = "agent-sdk"
-        _run_prompt(
-            "Help me set up my Philips Hue Bridge. Walk me through discovering "
-            "the bridge on my network, pressing the link button, and verifying "
-            "the connection. List all my lights when done."
-        )
+    elif args[0] == "start":
+        _start_daemon()
+    elif args[0] == "stop":
+        _stop_daemon()
+    elif args[0] == "status":
+        if _daemon_running():
+            pid = PID_FILE.read_text().strip()
+            console.print(f"[green]Daemon running (pid {pid})[/green]")
+        else:
+            console.print("[yellow]Daemon not running[/yellow]")
+    elif args[0] == "restart":
+        _stop_daemon()
+        time.sleep(1)
+        _start_daemon()
     else:
         prompt = " ".join(args)
-        _run_prompt(prompt)
+        _send(prompt)
 
 
 if __name__ == "__main__":

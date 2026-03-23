@@ -1,35 +1,34 @@
 # Fresnel
 
-A chronobiology-powered lighting agent for Philips Hue, built for speed.
+A chronobiology-powered lighting framework for Philips Hue. Meet **Lux**, your lighting scientist.
 
-Fresnel manages your Philips Hue lights based on circadian science — it knows when to energize you with cool bright light, when to wind you down with warm amber, and how to protect your sleep. Named after [Augustin-Jean Fresnel](https://en.wikipedia.org/wiki/Augustin-Jean_Fresnel), who revolutionized our understanding of light.
+Fresnel is the framework. **Lux** is the agent — a circadian lighting specialist who manages your Philips Hue lights for better focus, energy, and sleep, grounded in real photobiology research. Named after the unit of illuminance (lux) and built on a framework named after [Augustin-Jean Fresnel](https://en.wikipedia.org/wiki/Augustin-Jean_Fresnel), who revolutionized optics.
 
 ## Features
 
-- **Instant common commands** — "lights off", "circadian", "50%" execute directly, no LLM needed (<0.5s)
-- **Natural language control** — "make it cozy", "Rilakkuma-colored", "wind me down for bed" via any LLM
+- **Instant commands** — "lights off", "bedtime", "focus", "brighter" execute directly (<1s)
+- **Named routines** — "bedtime", "morning", "focus", "relax" — customizable through conversation
+- **Natural language** — "make it Rilakkuma-colored", "sunset in my room" via Claude
 - **Circadian automation** — time-based lighting grounded in melanopsin sensitivity and melatonin research
-- **Built-in Hue control** — no external MCP servers. Bridge pairing, lights, groups, scenes all built in
-- **User memory** — learns your name, room layout, sleep habits across sessions
-- **Any LLM backend** — LM Studio (local/free), OpenRouter (cheap), OpenAI, or Claude Agent SDK
+- **Persistent daemon** — boots once, stays warm, every command after that is fast
+- **User memory** — Lux learns your name, room layout, sleep habits across sessions
+- **Built-in Hue control** — no external MCP servers needed
 
 ## Architecture
 
-Fresnel uses a three-tier execution model, fastest first:
+Lux runs as a daemon with two execution paths:
 
 ```
-User input
-    │
-    ├─ Tier 1: Shortcuts (regex)     → direct phue call     < 0.5s   free
-    ├─ Tier 2: LLM engine (OpenAI)   → tool-use loop        ~ 2-5s   cheap/free
-    └─ Tier 3: Agent SDK (Claude)    → full Claude Code      ~ 14s    subscription
+User input → CLI
+               │
+               ├─ Shortcuts (regex + routines)  →  direct phue  < 1s
+               │
+               └─ Claude (persistent session)   →  tool calls   ~ 5s
 ```
 
-**Tier 1** pattern-matches common commands ("lights off", "circadian", "50%") and executes directly via phue. No network, no LLM.
+**Shortcuts** pattern-match common commands and named routines, executing directly via phue. No LLM, no network latency.
 
-**Tier 2** sends the prompt to any OpenAI-compatible API (LM Studio, OpenRouter, etc.) with tool definitions. The LLM picks the right tool, Fresnel executes it. One HTTP call.
-
-**Tier 3** falls back to the Claude Agent SDK for complex multi-step tasks like initial bridge setup. This spawns a full Claude Code process — powerful but slow.
+**Claude** handles everything else via a persistent `ClaudeSDKClient` session. The daemon boots the Claude Code process once and keeps it warm — subsequent messages skip the cold start.
 
 ## Quickstart
 
@@ -37,63 +36,70 @@ User input
 git clone https://github.com/rlacombe/fresnel.git
 cd fresnel
 uv sync
-cp .env.example .env
+
+# Start Lux
+uv run fresnel start
+
+# Talk to Lux
+uv run fresnel "hello"
+uv run fresnel setup          # guided Hue Bridge pairing
 ```
 
-### Option A: LM Studio (local, free)
-
-1. Install [LM Studio](https://lmstudio.ai) and download a model (e.g., Qwen 2.5 7B Instruct)
-2. Start the local server (LM Studio → Local Server → Start)
-3. Edit `.env`:
-   ```
-   FRESNEL_BASE_URL=http://localhost:1234/v1
-   FRESNEL_API_KEY=lm-studio
-   FRESNEL_MODEL=qwen2.5-7b-instruct
-   ```
-4. `uv run fresnel "hello"`
-
-### Option B: OpenRouter (cheap, any model)
-
-1. Get an API key at [openrouter.ai](https://openrouter.ai)
-2. Edit `.env`:
-   ```
-   FRESNEL_BASE_URL=https://openrouter.ai/api/v1
-   FRESNEL_API_KEY=sk-or-...
-   FRESNEL_MODEL=anthropic/claude-3-haiku
-   ```
-3. `uv run fresnel "hello"`
-
-### Option C: Claude Agent SDK (subscription)
-
-1. Set `FRESNEL_ENGINE=agent-sdk` and `ANTHROPIC_API_KEY` in `.env`
-2. `uv run fresnel "hello"`
+Requires a Claude Code subscription (Pro/Max). No API key needed if you're logged in.
 
 ## Usage
 
 ```bash
-# Interactive mode
-uv run fresnel
+# Daemon management
+uv run fresnel start           # start the daemon
+uv run fresnel stop            # stop it
+uv run fresnel status          # check if running
+uv run fresnel restart         # restart
 
-# One-shot commands
-uv run fresnel "turn my lights off"          # → shortcut, instant
-uv run fresnel "50%"                         # → shortcut, instant
-uv run fresnel circadian                     # → shortcut, instant
-uv run fresnel "make it Rilakkuma-colored"   # → LLM engine
-uv run fresnel setup                         # → Agent SDK (guided)
+# Interactive mode
+uv run fresnel                 # REPL
+
+# Instant shortcuts (< 1s)
+uv run fresnel "lights off"
+uv run fresnel "lights on"
+uv run fresnel "brighter"
+uv run fresnel "dimmer"
+uv run fresnel "50%"
+uv run fresnel "circadian"
+
+# Routines (< 1s, customizable)
+uv run fresnel "bedtime"       # nightstand + lantern, warm
+uv run fresnel "morning"       # ceiling + desk, cool bright
+uv run fresnel "focus"         # ceiling + desk, peak alertness
+uv run fresnel "reading"       # nightstand + desk, warm white
+uv run fresnel "relax"         # lantern + nightstand, low amber
+uv run fresnel "goodnight"     # everything off
+uv run fresnel "routines"      # list all routines
+
+# Natural language (~ 5s, via Claude)
+uv run fresnel "make it cozy"
+uv run fresnel "sunset in my room"
+uv run fresnel "update my bedtime routine to keep the lantern on"
 ```
 
 ## Configuration
 
-Fresnel stores config in `~/.config/fresnel/`:
-- `hue.json` — Bridge IP and API credentials
-- `user.json` — User profile and preferences
+Lux stores everything in `~/.config/fresnel/`:
+
+| File | Purpose |
+|---|---|
+| `hue.json` | Bridge IP and API credentials |
+| `user.json` | User profile and preferences |
+| `routines.json` | Named lighting presets |
+| `fresnel.sock` | Daemon Unix socket |
+| `daemon.log` | Daemon log output |
 
 ## Requirements
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - A Philips Hue Bridge + Hue bulbs
-- One of: LM Studio, OpenRouter API key, Anthropic API key, or OpenAI API key
+- Claude Code subscription (Pro or Max plan)
 
 ## License
 
