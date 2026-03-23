@@ -24,8 +24,25 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.style import Style
+from rich.theme import Theme
 
-console = Console()
+# Tokyo Night color scheme — matches the README terminal illustration
+THEME = Theme({
+    "lux.user": "bold #7dcfff",        # cyan — user prompt
+    "lux.label": "bold #9ece6a",        # green — Lux label
+    "lux.text": "#a9b1d6",              # muted blue-white — response text
+    "lux.highlight": "#e0af68",         # amber — values and highlights
+    "lux.science": "italic #7aa2f7",    # blue italic — science notes
+    "lux.dim": "#565f89",               # gray — secondary info
+    "lux.tool": "#565f89",              # gray — tool call indicators
+    "lux.error": "#f7768e",             # red — errors
+    "lux.success": "#9ece6a",           # green — success messages
+    "lux.warn": "#e0af68",              # amber — warnings
+    "lux.title": "bold #c0caf5",        # bright white — titles
+})
+
+console = Console(theme=THEME)
 
 CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
 SOCKET_PATH = CONFIG_DIR / "lux.sock"
@@ -46,32 +63,33 @@ def _version() -> str:
 
 
 HELP_TEXT = """\
-[bold]Lux[/bold] — chronobiology-powered lighting assistant
+[lux.title]Lux[/lux.title] [lux.dim]—[/lux.dim] [lux.text]chronobiology-powered lighting assistant[/lux.text]
 
-[bold]Usage:[/bold]
-  lux                          Interactive mode
-  lux "<command>"              One-shot command
-  lux start                    Start the daemon
-  lux stop                     Stop the daemon
-  lux status                   Check daemon status
-  lux restart                  Restart the daemon
-  lux setup calendar           Configure calendar alerts
-  lux --help, -h               Show this help
-  lux --version, -v            Show version
+[lux.title]Usage:[/lux.title]
+  [lux.highlight]lux[/lux.highlight]                          Interactive mode
+  [lux.highlight]lux "<command>"[/lux.highlight]              One-shot command
+  [lux.highlight]lux start[/lux.highlight]                    Start the daemon
+  [lux.highlight]lux stop[/lux.highlight]                     Stop the daemon
+  [lux.highlight]lux status[/lux.highlight]                   Check daemon status
+  [lux.highlight]lux restart[/lux.highlight]                  Restart the daemon
+  [lux.highlight]lux setup calendar[/lux.highlight]           Configure calendar alerts
+  [lux.highlight]lux setup weather[/lux.highlight]            Connect weather data
+  [lux.highlight]lux --help, -h[/lux.highlight]               Show this help
+  [lux.highlight]lux --version, -v[/lux.highlight]            Show version
 
-[bold]Examples:[/bold]
-  lux "lights off"             Turn all lights off
-  lux "circadian"              Apply circadian lighting
-  lux "50%"                    Set brightness to 50%
-  lux "focus"                  Activate focus routine
-  lux "breathe"                Start breathing light mode
-  lux "candle"                 Start candle flicker mode
-  lux "make it cozy"           Ask Lux (uses AI)
+[lux.title]Examples:[/lux.title]
+  [lux.highlight]lux "lights off"[/lux.highlight]             Turn all lights off
+  [lux.highlight]lux "circadian"[/lux.highlight]              Apply circadian lighting
+  [lux.highlight]lux "50%"[/lux.highlight]                    Set brightness to 50%
+  [lux.highlight]lux "focus"[/lux.highlight]                  Activate focus routine
+  [lux.highlight]lux "breathe"[/lux.highlight]                Start breathing light mode
+  [lux.highlight]lux "candle"[/lux.highlight]                 Start candle flicker mode
+  [lux.highlight]lux "make it cozy"[/lux.highlight]           Ask Lux (uses AI)
 
-[bold]Shortcuts:[/bold]
-  on/off, brighter/dimmer, circadian, breathe/candle/stop,
+[lux.title]Shortcuts:[/lux.title]
+  [lux.dim]on/off, brighter/dimmer, circadian, breathe/candle/stop,
   and any saved routine name are handled instantly (<1s).
-  Everything else goes through Lux's AI for natural language control.
+  Everything else goes through Lux's AI for natural language control.[/lux.dim]
 """
 
 
@@ -92,7 +110,7 @@ def _daemon_running() -> bool:
 def _start_daemon() -> None:
     """Start the daemon in the background with a spinner."""
     if _daemon_running():
-        console.print("[dim]Daemon already running.[/dim]")
+        console.print("[lux.dim]Daemon already running.[/lux.dim]")
         return
 
     # Start daemon as a background process
@@ -108,33 +126,33 @@ def _start_daemon() -> None:
     )
 
     # Wait for socket with a spinner
-    with console.status("[bold cyan]Starting Lux...", spinner="dots"):
+    with console.status("[lux.highlight]Starting Lux...", spinner="dots"):
         for _ in range(30):
             if SOCKET_PATH.exists():
                 break
             if proc.poll() is not None:
                 console.print(
-                    f"[red]Daemon exited with code {proc.returncode}. "
-                    f"Check {log_path}[/red]"
+                    f"[lux.error]Daemon exited with code {proc.returncode}. "
+                    f"Check {log_path}[/lux.error]"
                 )
                 return
             time.sleep(0.5)
         else:
-            console.print(f"[red]Daemon failed to start. Check {log_path}[/red]")
+            console.print(f"[lux.error]Daemon failed to start. Check {log_path}[/lux.error]")
             return
 
-    console.print("[dim]Lux is ready.[/dim]")
+    console.print("[lux.success]Lux is ready.[/lux.success]")
 
 
 def _stop_daemon() -> None:
     """Stop the daemon."""
     if not _daemon_running():
-        console.print("[dim]Daemon not running.[/dim]")
+        console.print("[lux.dim]Daemon not running.[/lux.dim]")
         return
 
     pid = int(PID_FILE.read_text().strip())
     os.kill(pid, signal.SIGTERM)
-    console.print("[dim]Daemon stopped.[/dim]")
+    console.print("[lux.dim]Daemon stopped.[/lux.dim]")
 
 
 async def _send_to_daemon(prompt: str) -> None:
@@ -145,6 +163,7 @@ async def _send_to_daemon(prompt: str) -> None:
         writer.write(json.dumps({"prompt": prompt}).encode() + b"\n")
         await writer.drain()
 
+        first_text = True
         while True:
             line = await asyncio.wait_for(reader.readline(), timeout=SEND_TIMEOUT)
             if not line:
@@ -153,15 +172,22 @@ async def _send_to_daemon(prompt: str) -> None:
             msg = json.loads(line.decode())
 
             if msg["type"] == "text":
-                console.print(Markdown(msg["text"]))
+                if first_text:
+                    console.print()
+                    console.print("[lux.label]Lux:[/lux.label]")
+                    first_text = False
+                console.print(
+                    Markdown(msg["text"]),
+                    style="lux.text",
+                )
             elif msg["type"] == "tool":
-                console.print(f"[dim]-> {msg['name']}[/dim]")
+                console.print(f"[lux.tool]  -> {msg['name']}[/lux.tool]")
             elif msg["type"] == "error":
-                console.print(f"[red]Error: {msg['text']}[/red]")
+                console.print(f"[lux.error]Error: {msg['text']}[/lux.error]")
             elif msg["type"] == "done":
                 break
     except asyncio.TimeoutError:
-        console.print("[red]Daemon not responding (timed out after 30s).[/red]")
+        console.print("[lux.error]Daemon not responding (timed out after 30s).[/lux.error]")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -175,7 +201,7 @@ def _send(prompt: str) -> None:
     try:
         asyncio.run(_send_to_daemon(prompt))
     except (ConnectionRefusedError, FileNotFoundError):
-        console.print("[yellow]Connection lost. Restarting daemon...[/yellow]")
+        console.print("[lux.warn]Connection lost. Restarting daemon...[/lux.warn]")
         _stop_daemon()
         time.sleep(0.5)
         _start_daemon()
@@ -208,22 +234,23 @@ def _interactive() -> None:
     _setup_readline()
 
     console.print(
-        "[bold]Lux[/bold] -- your chronobiology-powered lighting assistant\n"
-        "[dim]Type a command, or 'quit' to exit.[/dim]\n"
+        "[lux.title]Lux[/lux.title] [lux.dim]--[/lux.dim] "
+        "[lux.text]your chronobiology-powered lighting assistant[/lux.text]\n"
+        "[lux.dim]Type a command, or 'quit' to exit.[/lux.dim]\n"
     )
 
     try:
         while True:
             try:
-                user_input = console.input("[bold cyan]You:[/bold cyan] ").strip()
+                user_input = console.input("[lux.user]You:[/lux.user] ").strip()
             except (EOFError, KeyboardInterrupt):
-                console.print("\n[dim]Goodbye![/dim]")
+                console.print("\n[lux.dim]Goodbye![/lux.dim]")
                 break
 
             if not user_input:
                 continue
             if user_input.lower() in ("quit", "exit", "q"):
-                console.print("[dim]Goodbye![/dim]")
+                console.print("[lux.dim]Goodbye![/lux.dim]")
                 break
 
             readline.add_history(user_input)
@@ -246,7 +273,7 @@ def main() -> None:
     if args[0] in ("--help", "-h"):
         console.print(HELP_TEXT)
     elif args[0] in ("--version", "-v"):
-        console.print(f"fiat-lux {_version()}")
+        console.print(f"[lux.title]fiat-lux[/lux.title] [lux.highlight]{_version()}[/lux.highlight]")
     elif args[0] == "start":
         _start_daemon()
     elif args[0] == "stop":
@@ -254,9 +281,9 @@ def main() -> None:
     elif args[0] == "status":
         if _daemon_running():
             pid = PID_FILE.read_text().strip()
-            console.print(f"[green]Daemon running (pid {pid})[/green]")
+            console.print(f"[lux.success]Daemon running (pid {pid})[/lux.success]")
         else:
-            console.print("[yellow]Daemon not running[/yellow]")
+            console.print("[lux.warn]Daemon not running[/lux.warn]")
     elif args[0] == "restart":
         _stop_daemon()
         time.sleep(1)

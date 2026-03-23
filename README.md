@@ -120,6 +120,14 @@ Make sure `~/.local/bin` is in your `PATH`.
 
 ## Usage
 
+The main way to use Lux is the **interactive REPL** — just type `lux` and talk:
+
+```bash
+lux                        # start a conversation with Lux
+```
+
+Everything below also works as one-shot commands (`lux "lights off"`), but the REPL is where Lux shines — it remembers context, learns your preferences, and gives you a back-and-forth conversation.
+
 ```bash
 # CLI
 lux --help                 # show all commands
@@ -130,9 +138,6 @@ lux start                  # start the daemon
 lux stop                   # stop it
 lux status                 # check if running
 lux restart                # restart
-
-# Interactive mode (with readline history)
-lux                        # REPL
 
 # Instant shortcuts (< 1s)
 lux "lights off"
