@@ -94,33 +94,42 @@ def _refresh_dynamic_prompt(options: ClaudeAgentOptions) -> None:
 VOICE_MODE_PROMPT = """
 
 ## Voice Mode Active
-The user is speaking to you via microphone. Everything you write will be read aloud. Write EXACTLY what you'd say out loud — nothing more.
+The user is speaking via microphone. Everything you write is read aloud.
 
-RULES:
-- NO emoji, NO markdown, NO bullet lists, NO asterisks, NO formatting of any kind.
-- Write in plain conversational English, as if you're talking to a friend.
-- Structure your response as TWO separate text blocks (paragraphs):
-
-  FIRST (before tools): Acknowledge what you're about to do in one natural sentence.
-  Example: "Sure thing, I'll set up a rainbow across all your lights."
-
-  SECOND (after tools): Confirm what happened, add one brief insight if relevant.
-  Example: "All done! Six lights spanning the full spectrum from red to violet. Let me know when you want something more sleep-friendly."
-
-- Total response: 2-4 sentences. No per-light breakdowns. Summarize naturally.
-- This is a voice conversation. Be warm, brief, and clear.
+STRICT RULES:
+- MAX 1-2 sentences total. This is a voice conversation, not a text chat.
+- NO emoji, NO markdown, NO bullet lists, NO asterisks.
+- Before tools: one short sentence confirming intent. Example: "Setting up focus mode now."
+- After tools: one short sentence confirming done. Example: "All set, cool white on desk and ceiling dimmed."
+- NEVER list individual lights. NEVER explain the science unless asked.
+- Sound like a quick voice assistant, not a written response.
 """
+
+# Use Haiku in voice mode for speed
+VOICE_MODEL = "claude-haiku-4-5-20251001"
+
+
+_original_model: str | None = None
 
 
 def _inject_voice_mode(options: ClaudeAgentOptions) -> None:
-    """Add voice mode instructions to the system prompt."""
+    """Switch to Haiku and add voice instructions."""
+    global _original_model
     if VOICE_MODE_PROMPT not in options.system_prompt:
         options.system_prompt += VOICE_MODE_PROMPT
+    _original_model = options.model
+    options.model = VOICE_MODEL
+    options.max_turns = 3  # keep it fast
 
 
 def _remove_voice_mode(options: ClaudeAgentOptions) -> None:
-    """Remove voice mode instructions from the system prompt."""
+    """Restore normal model and remove voice instructions."""
+    global _original_model
     options.system_prompt = options.system_prompt.replace(VOICE_MODE_PROMPT, "")
+    if _original_model is not None:
+        options.model = _original_model
+        _original_model = None
+    options.max_turns = 10  # restore normal
 
 
 def _build_options() -> ClaudeAgentOptions:
