@@ -1,6 +1,6 @@
-"""Fresnel routines — named lighting presets, configurable through conversation.
+"""Fiat-Lux routines — named lighting presets, configurable through conversation.
 
-Stored in ~/.config/fresnel/routines.json. Each routine defines which lights
+Stored in ~/.config/fiat_lux/routines.json. Each routine defines which lights
 to turn on/off and their settings. Triggered instantly via shortcuts.
 """
 
@@ -10,9 +10,9 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-from fresnel.tools.hue import _get_bridge, _normalize
+from fiat_lux.tools.hue import _get_bridge, _normalize
 
-CONFIG_DIR = Path.home() / ".config" / "fresnel"
+CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
 ROUTINES_FILE = CONFIG_DIR / "routines.json"
 
 # Default routines — seeded on first use, then user-customizable
@@ -219,6 +219,18 @@ async def list_routines_tool(args: dict[str, Any]) -> dict[str, Any]:
 async def save_routine_tool(args: dict[str, Any]) -> dict[str, Any]:
     routines = _load_routines()
     name = args["name"].lower()
+
+    # Validate light names against the bridge
+    warnings = []
+    try:
+        b = _get_bridge()
+        known = {_normalize(l.name).lower() for l in b.lights}
+        for lname in list(args["lights_on"].keys()) + args["lights_off"]:
+            if lname.lower() != "all" and _normalize(lname).lower() not in known:
+                warnings.append(lname)
+    except RuntimeError:
+        pass  # Bridge not configured — skip validation
+
     routines[name] = {
         "description": args["description"],
         "lights_on": args["lights_on"],
@@ -226,7 +238,11 @@ async def save_routine_tool(args: dict[str, Any]) -> dict[str, Any]:
         "transition_seconds": args.get("transition_seconds", 2),
     }
     _save_routines(routines)
-    return _text(f"Saved routine '{name}'. Trigger it anytime by typing '{name}'.")
+
+    msg = f"Saved routine '{name}'. Trigger it anytime by typing '{name}'."
+    if warnings:
+        msg += f"\n\nWarning: these light names weren't found on the bridge: {', '.join(warnings)}"
+    return _text(msg)
 
 
 @tool(

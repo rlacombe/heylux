@@ -1,6 +1,6 @@
 """Philips Hue light control tools.
 
-Wraps the phue library to provide MCP tools for Fresnel's agent.
+Wraps the phue library to provide MCP tools for Lux.
 Handles bridge discovery, pairing, and all light/group/scene control.
 """
 
@@ -11,8 +11,8 @@ from typing import Any
 from claude_agent_sdk import tool
 from phue import Bridge, PhueRegistrationException
 
-# Fresnel stores its config separately from phue's default ~/.python_hue
-CONFIG_DIR = Path.home() / ".config" / "fresnel"
+# Fiat-Lux stores its config separately from phue's default ~/.python_hue
+CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
 CONFIG_FILE = CONFIG_DIR / "hue.json"
 
 

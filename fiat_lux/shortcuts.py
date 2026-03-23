@@ -6,26 +6,53 @@ Returns None if the command doesn't match any known pattern.
 
 import re
 
-from fresnel.tools.circadian import get_circadian_state
-from fresnel.tools.hue import _get_bridge
-from fresnel.routines import run_routine, list_routines
+from fiat_lux.tools.circadian import get_circadian_state
+from fiat_lux.tools.hue import _get_bridge
+from fiat_lux.routines import run_routine, list_routines
 
 BRIGHTNESS_STEP = 20  # percent per brighter/dimmer
+
+# Sentinel values for ambient modes (daemon interprets these)
+SHORTCUT_BREATHE_START = "__BREATHE_START__"
+SHORTCUT_BREATHE_STOP = "__BREATHE_STOP__"
+SHORTCUT_CANDLE_START = "__CANDLE_START__"
 
 
 def try_shortcut(text: str) -> str | None:
     """Try to handle a command directly. Returns response text, or None to fall through to LLM."""
     text = text.strip().lower()
 
+    # --- Ambient modes (optionally targeting specific lights) ---
+    # "candle" / "candle on nightstand" / "candle mode night stand"
+    for prefix in ("candle mode on ", "candle mode ", "candlelight on ", "candle on ", "candle "):
+        if text.startswith(prefix) and text != prefix.strip():
+            light_name = text[len(prefix):].strip()
+            return f"{SHORTCUT_CANDLE_START}:{light_name}"
+
+    if text in ("candle", "candle mode", "candlelight"):
+        return SHORTCUT_CANDLE_START
+
+    # "breathe" / "breathe on nightstand"
+    for prefix in ("breathing mode on ", "breathing mode ", "breathe on ", "breathing on ", "breathe "):
+        if text.startswith(prefix) and text != prefix.strip():
+            light_name = text[len(prefix):].strip()
+            return f"{SHORTCUT_BREATHE_START}:{light_name}"
+
+    if text in ("breathe", "breathing", "breathing mode"):
+        return SHORTCUT_BREATHE_START
+
+    if text in ("stop", "stop breathing", "normal"):
+        return SHORTCUT_BREATHE_STOP
+
     # --- On / Off ---
     if re.match(r"^(turn\s+)?(all\s+)?(my\s+)?(the\s+)?lights?\s+off$", text):
-        return _all_off()
+        return SHORTCUT_BREATHE_STOP
 
     if re.match(r"^(turn\s+)?(all\s+)?(my\s+)?(the\s+)?lights?\s+on$", text):
         return _all_on()
 
     if text in ("off", "goodnight", "good night"):
-        return _all_off()
+        return SHORTCUT_BREATHE_STOP
 
     if text == "on":
         return _all_on()

@@ -1,7 +1,7 @@
-"""Fresnel user memory — persistent user profile across sessions.
+"""Fiat-Lux user memory — persistent user profile across sessions.
 
 Stores user preferences, room layout, chronotype, and anything else
-Fresnel learns through conversation. Lives in ~/.config/fresnel/user.json.
+Lux learns through conversation. Lives in ~/.config/fiat_lux/user.json.
 """
 
 import json
@@ -11,7 +11,7 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-CONFIG_DIR = Path.home() / ".config" / "fresnel"
+CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
 USER_FILE = CONFIG_DIR / "user.json"
 
 
@@ -50,7 +50,7 @@ def get_profile_context() -> str:
 
 @tool(
     "get_user_profile",
-    "Retrieve everything Fresnel knows about the user from past conversations. "
+    "Retrieve everything Lux knows about the user from past conversations. "
     "Returns the full user profile. Call this when you need to personalize advice "
     "or check what you already know before asking the user again.",
     {},
