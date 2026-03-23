@@ -135,8 +135,9 @@ async def pair_hue_bridge(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "get_hue_status",
-    "Check the current Hue Bridge connection status and list all available lights, "
-    "groups, and scenes. Use this to understand what's available before making changes.",
+    "Check the current Hue Bridge status — all lights organized by room/group, "
+    "with current state, plus available scenes. Use this to understand what's "
+    "available or when the user asks to see their lights.",
     {},
 )
 async def get_hue_status(args: dict[str, Any]) -> dict[str, Any]:
@@ -148,38 +149,55 @@ async def get_hue_status(args: dict[str, Any]) -> dict[str, Any]:
     try:
         lines = ["**Hue Bridge Status**\n"]
 
-        # Lights
-        lines.append("**Lights:**")
+        # Build light id → name/state map
+        light_map = {}
         for light in b.lights:
             state = "on" if light.on else "off"
-            bri = light.brightness
+            bri_pct = round(light.brightness * 100 / 254) if light.on else 0
             ct = getattr(light, "colortemp", None)
-            ct_str = f", {ct} mireds (~{round(1_000_000 / ct)}K)" if ct else ""
-            lines.append(
-                f"  - {light.name} (id={light.light_id}): "
-                f"{state}, brightness={bri}/254{ct_str}"
-            )
+            ct_str = f", ~{round(1_000_000 / ct)}K" if ct and light.on else ""
+            light_map[str(light.light_id)] = {
+                "name": light.name,
+                "state": f"{state}" + (f", {bri_pct}%{ct_str}" if light.on else ""),
+            }
 
-        # Groups
+        # Groups/rooms with their lights
         groups = b.get_group()
+        assigned_ids = set()
         if groups:
-            lines.append("\n**Groups/Rooms:**")
-            for gid, group in groups.items():
-                lines.append(
-                    f"  - {group['name']} (id={gid}): "
-                    f"lights={group.get('lights', [])}"
-                )
+            for gid, group in sorted(groups.items(), key=lambda x: x[1].get("name", "")):
+                group_type = group.get("type", "LightGroup")
+                label = "Room" if group_type == "Room" else "Group"
+                group_lights = group.get("lights", [])
+                lines.append(f"**{group['name']}** ({label})")
+                for lid in group_lights:
+                    info = light_map.get(lid)
+                    if info:
+                        lines.append(f"  - {info['name']}: {info['state']}")
+                        assigned_ids.add(lid)
+                lines.append("")
+
+        # Any lights not in a group
+        ungrouped = [
+            lid for lid in light_map if lid not in assigned_ids
+        ]
+        if ungrouped:
+            lines.append("**Ungrouped Lights**")
+            for lid in ungrouped:
+                info = light_map[lid]
+                lines.append(f"  - {info['name']}: {info['state']}")
+            lines.append("")
 
         # Scenes
         scenes = b.get_scene()
         if scenes:
-            lines.append("\n**Scenes:**")
+            lines.append("**Scenes:**")
             seen = set()
             for sid, scene in scenes.items():
                 name = scene.get("name", sid)
                 if name not in seen:
                     seen.add(name)
-                    lines.append(f"  - {name} (id={sid})")
+                    lines.append(f"  - {name}")
 
         return _text("\n".join(lines))
     except Exception as e:
@@ -404,6 +422,52 @@ async def set_group(args: dict[str, Any]) -> dict[str, Any]:
         return _error(f"Failed to set group: {e}")
 
 
+@tool(
+    "breathing_pulse",
+    "Perform a breathing pulse effect on one or more lights — a gentle fade in/out "
+    "in a specified color. Saves and restores the light's previous state after the "
+    "pulse. Great for notifications, drawing attention, or showing off effects. "
+    "Use hue 8000 for amber, 46920 for blue, 0 for red, 25500 for green.",
+    {
+        "type": "object",
+        "properties": {
+            "lights": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Light names to pulse.",
+            },
+            "hue": {
+                "type": "number",
+                "description": "Hue value (0-65535). 8000=amber, 46920=blue, 0=red, 25500=green.",
+            },
+            "saturation": {
+                "type": "number",
+                "description": "Color saturation (0-254). Default 200.",
+            },
+            "breaths": {
+                "type": "number",
+                "description": "Number of breath cycles. Default 3.",
+            },
+        },
+        "required": ["lights"],
+    },
+)
+async def breathing_pulse_tool(args: dict[str, Any]) -> dict[str, Any]:
+    from fiat_lux.pulse import breathing_pulse as _pulse
+
+    lights = args["lights"]
+    hue = int(args.get("hue", 8000))
+    sat = int(args.get("saturation", 200))
+    breaths = int(args.get("breaths", 3))
+
+    try:
+        for light_name in lights:
+            _pulse(light_name, hue=hue, saturation=sat, breaths=breaths)
+        return _text(f"Pulsed {', '.join(lights)} ({breaths} breaths).")
+    except Exception as e:
+        return _error(f"Pulse failed: {e}")
+
+
 # All tools to register with the MCP server
 ALL_HUE_TOOLS = [
     pair_hue_bridge,
@@ -411,4 +475,5 @@ ALL_HUE_TOOLS = [
     set_lights,
     activate_scene,
     set_group,
+    breathing_pulse_tool,
 ]

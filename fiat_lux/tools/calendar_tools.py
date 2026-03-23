@@ -108,4 +108,34 @@ async def save_calendar_config(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-ALL_CALENDAR_TOOLS = [setup_calendar_alerts, save_calendar_config]
+@tool(
+    "set_alert_lights",
+    "Configure which lights pulse for calendar meeting alerts. "
+    "Pass light names to use for alerts, or ['all'] for all lights (room-wide). "
+    "Defaults to all lights if not configured.",
+    {
+        "type": "object",
+        "properties": {
+            "lights": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Light names to use for meeting alerts. Use ['all'] for all lights.",
+            },
+        },
+        "required": ["lights"],
+    },
+)
+async def set_alert_lights(args: dict[str, Any]) -> dict[str, Any]:
+    lights = args["lights"]
+    config = _load_config()
+    config["alert_lights"] = lights
+    _save_config(config)
+    if lights == ["all"]:
+        return _text("Meeting alerts will pulse all lights (room-wide).")
+    return _text(
+        f"Meeting alerts will pulse: {', '.join(lights)}.\n"
+        "All other lights stay untouched during alerts."
+    )
+
+
+ALL_CALENDAR_TOOLS = [setup_calendar_alerts, save_calendar_config, set_alert_lights]

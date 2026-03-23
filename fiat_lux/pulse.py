@@ -6,6 +6,7 @@ Uses phue directly for low-latency light control.
 import asyncio
 import random
 import time
+from pathlib import Path
 from typing import Any
 
 from fiat_lux.tools.hue import _get_bridge
@@ -109,14 +110,36 @@ AMBER_HUE = 8000
 BLUE_HUE = 46920
 
 
-def pulse_heads_up(light_name: str = "Desk lamp") -> None:
+def _get_alert_lights() -> list[str]:
+    """Get configured alert lights, or all lights if not configured."""
+    import json
+    config_file = Path.home() / ".config" / "fiat_lux" / "calendars.json"
+    if config_file.exists():
+        try:
+            config = json.loads(config_file.read_text())
+            lights = config.get("alert_lights", [])
+            if lights:
+                return lights
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # Default: all lights
+    try:
+        b = _get_bridge()
+        return [l.name for l in b.lights]
+    except RuntimeError:
+        return ["Desk lamp"]
+
+
+def pulse_heads_up() -> None:
     """Amber breathing pulse — meeting in 5 minutes."""
-    breathing_pulse(light_name, hue=AMBER_HUE, saturation=200, breaths=2)
+    for light in _get_alert_lights():
+        breathing_pulse(light, hue=AMBER_HUE, saturation=200, breaths=4)
 
 
-def pulse_starting_now(light_name: str = "Desk lamp") -> None:
+def pulse_starting_now() -> None:
     """Blue breathing pulse — meeting in 15 seconds."""
-    breathing_pulse(light_name, hue=BLUE_HUE, saturation=160, breaths=2)
+    for light in _get_alert_lights():
+        breathing_pulse(light, hue=BLUE_HUE, saturation=160, breaths=3)
 
 
 # ---------------------------------------------------------------------------
