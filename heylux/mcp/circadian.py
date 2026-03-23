@@ -11,7 +11,7 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 LIGHT_MAP_FILE = CONFIG_DIR / "light_map.json"
 
 # Default mapping from generic zone names to light groups.
@@ -125,7 +125,7 @@ def get_circadian_state(now: datetime | None = None) -> dict[str, Any]:
     weather_note = ""
 
     try:
-        from fiat_lux.weather import get_actual_sunrise_sunset, get_brightness_adjustment
+        from heylux.weather import get_actual_sunrise_sunset, get_brightness_adjustment
 
         sun_times = get_actual_sunrise_sunset()
         if sun_times:

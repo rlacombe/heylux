@@ -1,6 +1,6 @@
-# Fiat-Lux MCP Server
+# Hey Lux MCP Server
 
-Fiat-Lux exposes its lighting tools as an MCP (Model Context Protocol) server. Any AI agent or MCP client can connect to control Philips Hue lights with circadian intelligence, weather awareness, and scheduling.
+Hey Lux exposes its lighting tools as an MCP (Model Context Protocol) server. Any AI agent or MCP client can connect to control Philips Hue lights with circadian intelligence, weather awareness, and scheduling.
 
 ## Available Tools
 
@@ -63,7 +63,7 @@ Fiat-Lux exposes its lighting tools as an MCP (Model Context Protocol) server. A
 
 ## Connecting to the MCP Server
 
-The Fiat-Lux daemon exposes its tools through the Claude Agent SDK's `create_sdk_mcp_server`. The server is named `fiat_lux` and all tool names are prefixed with `mcp__fiat_lux__` when accessed through the SDK.
+The Hey Lux daemon exposes its tools through the Claude Agent SDK's `create_sdk_mcp_server`. The server is named `heylux` and all tool names are prefixed with `mcp__heylux__` when accessed through the SDK.
 
 ### From another Claude Agent SDK client
 
@@ -71,12 +71,12 @@ The Fiat-Lux daemon exposes its tools through the Claude Agent SDK's `create_sdk
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, create_sdk_mcp_server
 
 # Import the tools you want
-from fiat_lux.mcp.hue import ALL_HUE_TOOLS
-from fiat_lux.mcp.circadian import get_circadian_recommendation
+from heylux.mcp.hue import ALL_HUE_TOOLS
+from heylux.mcp.circadian import get_circadian_recommendation
 
 # Create the MCP server
-fiat_lux_server = create_sdk_mcp_server(
-    name="fiat_lux",
+heylux_server = create_sdk_mcp_server(
+    name="heylux",
     version="0.1.0",
     tools=[get_circadian_recommendation, *ALL_HUE_TOOLS],
 )
@@ -84,26 +84,26 @@ fiat_lux_server = create_sdk_mcp_server(
 # Use it in your agent options
 options = ClaudeAgentOptions(
     system_prompt="You are an assistant with access to smart lighting.",
-    mcp_servers={"fiat_lux": fiat_lux_server},
-    allowed_tools=["mcp__fiat_lux__*"],
+    mcp_servers={"heylux": heylux_server},
+    allowed_tools=["mcp__heylux__*"],
 )
 ```
 
 ### Tool naming convention
 
-All tools follow the pattern `mcp__fiat_lux__<tool_name>`:
+All tools follow the pattern `mcp__heylux__<tool_name>`:
 
 ```
-mcp__fiat_lux__set_lights
-mcp__fiat_lux__get_circadian_recommendation
-mcp__fiat_lux__schedule_transition
-mcp__fiat_lux__breathing_pulse
+mcp__heylux__set_lights
+mcp__heylux__get_circadian_recommendation
+mcp__heylux__schedule_transition
+mcp__heylux__breathing_pulse
 ...
 ```
 
 ## Configuration
 
-All state is stored in `~/.config/fiat_lux/`. The MCP tools read/write:
+All state is stored in `~/.config/heylux/`. The MCP tools read/write:
 
 - `hue.json` — Bridge credentials
 - `user.json` — User profile

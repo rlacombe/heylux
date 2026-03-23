@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import numpy as np
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 VOICE_CONFIG = CONFIG_DIR / "voice.json"
 
 # Audio settings

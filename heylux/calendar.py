@@ -11,7 +11,7 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 CALENDAR_CONFIG = CONFIG_DIR / "calendars.json"
 
 

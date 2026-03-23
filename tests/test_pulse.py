@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fiat_lux.pulse import (
+from heylux.pulse import (
     breathing_pulse,
     breathing_mode_loop,
     _save_light_state,
@@ -33,7 +33,7 @@ def mock_bridge():
         }
     }
 
-    with patch("fiat_lux.pulse._get_bridge", return_value=bridge):
+    with patch("heylux.pulse._get_bridge", return_value=bridge):
         yield bridge
 
 
@@ -80,7 +80,7 @@ class TestSaveRestoreState:
 
 
 class TestBreathingPulse:
-    @patch("fiat_lux.pulse.time.sleep")
+    @patch("heylux.pulse.time.sleep")
     def test_saves_and_restores(self, mock_sleep, mock_bridge):
         breathing_pulse("Desk lamp", hue=8000, saturation=200, breaths=1)
         # First call is the pulse, later calls include restore
@@ -90,7 +90,7 @@ class TestBreathingPulse:
         last_cmd = calls[-1][0][1]
         assert "ct" in last_cmd or "hue" in last_cmd
 
-    @patch("fiat_lux.pulse.time.sleep")
+    @patch("heylux.pulse.time.sleep")
     def test_no_crash_on_unknown_light(self, mock_sleep, mock_bridge):
         # Should return silently if light not found
         breathing_pulse("Unknown light", hue=8000, saturation=200, breaths=1)

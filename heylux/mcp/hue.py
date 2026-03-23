@@ -11,8 +11,8 @@ from typing import Any
 from claude_agent_sdk import tool
 from phue import Bridge, PhueRegistrationException
 
-# Fiat-Lux stores its config separately from phue's default ~/.python_hue
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+# Hey Lux stores its config separately from phue's default ~/.python_hue
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 CONFIG_FILE = CONFIG_DIR / "hue.json"
 
 
@@ -459,7 +459,7 @@ async def set_group(args: dict[str, Any]) -> dict[str, Any]:
 )
 async def breathing_pulse_tool(args: dict[str, Any]) -> dict[str, Any]:
     import asyncio
-    from fiat_lux.pulse import breathing_pulse as _pulse
+    from heylux.pulse import breathing_pulse as _pulse
 
     lights = args["lights"]
     hue = int(args.get("hue", 46920))  # default blue

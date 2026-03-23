@@ -3,7 +3,7 @@
 Polls weather data periodically and caches it. Provides cloud cover,
 sunrise/sunset, and weather conditions for the circadian engine and Lux.
 Location is obtained via macOS CoreLocation (with user permission) or
-manual entry, saved to ~/.config/fiat_lux/weather.json.
+manual entry, saved to ~/.config/heylux/weather.json.
 """
 
 import json
@@ -16,7 +16,7 @@ from typing import Any
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 WEATHER_CONFIG = CONFIG_DIR / "weather.json"
 WEATHER_CACHE = CONFIG_DIR / "weather_cache.json"
 
@@ -106,7 +106,7 @@ def _reverse_geocode_county(lat: float, lon: float) -> str:
             f"https://nominatim.openstreetmap.org/reverse"
             f"?lat={lat}&lon={lon}&format=json&zoom=10"
         )
-        req = Request(url, headers={"User-Agent": "fiat-lux/0.1"})
+        req = Request(url, headers={"User-Agent": "heylux/0.1"})
         with urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
             addr = data.get("address", {})
@@ -145,7 +145,7 @@ def _find_nearest_major_city(lat: float, lon: float, ip_city: str) -> str:
                 f"https://geocoding-api.open-meteo.com/v1/search"
                 f"?name={quote(query)}&count=10"
             )
-            req = Request(url, headers={"User-Agent": "fiat-lux/0.1"})
+            req = Request(url, headers={"User-Agent": "heylux/0.1"})
             with urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode())
                 for r in data.get("results", []):
@@ -179,7 +179,7 @@ def request_ip_location() -> tuple[float, float, str] | None:
     try:
         req = Request(
             "https://ipapi.co/json/",
-            headers={"User-Agent": "fiat-lux/0.1"},
+            headers={"User-Agent": "heylux/0.1"},
         )
         with urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
@@ -295,7 +295,7 @@ def fetch_weather(latitude: float, longitude: float) -> dict[str, Any] | None:
         f"&timezone=auto"
     )
     try:
-        req = Request(url, headers={"User-Agent": "fiat-lux/0.1"})
+        req = Request(url, headers={"User-Agent": "heylux/0.1"})
         with urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode())
     except (URLError, json.JSONDecodeError, OSError):

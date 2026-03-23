@@ -9,7 +9,7 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from fiat_lux.voice import _rms, record_until_silence, transcribe
+from heylux.voice import _rms, record_until_silence, transcribe
 
 
 class TestRMS:
@@ -29,12 +29,12 @@ class TestRMS:
 class TestRecordUntilSilence:
     def test_silence_threshold_calibration(self):
         """Threshold should be THRESHOLD_MULTIPLIER times ambient."""
-        from fiat_lux.voice import THRESHOLD_MULTIPLIER
+        from heylux.voice import THRESHOLD_MULTIPLIER
         # With ambient RMS of 0.005, threshold should be 0.015
         assert THRESHOLD_MULTIPLIER == 3.0
 
     def test_format_volume_bar(self):
-        from fiat_lux.voice import format_volume_bar
+        from heylux.voice import format_volume_bar
         bar = format_volume_bar(0.0, width=10)
         assert len(bar) == 10
         assert "\u2588" not in bar  # no filled blocks for silence
@@ -44,7 +44,7 @@ class TestRecordUntilSilence:
 
 
 class TestTranscribe:
-    @patch("fiat_lux.voice._get_whisper_model")
+    @patch("heylux.voice._get_whisper_model")
     def test_transcribes_audio(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.transcribe.return_value = {"text": " lights off "}
@@ -62,5 +62,5 @@ class TestGracefulImportError:
         """The CLI should show a helpful message if voice deps aren't installed."""
         # This tests the import guard in agent.py, not voice.py itself
         # Just verify the module structure is correct
-        from fiat_lux.voice import listen_once
+        from heylux.voice import listen_once
         assert callable(listen_once)

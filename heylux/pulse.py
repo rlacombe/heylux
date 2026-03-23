@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fiat_lux.mcp.hue import _get_bridge
+from heylux.mcp.hue import _get_bridge
 
 
 def _save_light_state(bridge, light_id: int) -> dict:
@@ -126,7 +126,7 @@ BLUE_HUE = 46920
 def _get_alert_lights() -> list[str]:
     """Get configured alert lights, or all lights if not configured."""
     import json
-    config_file = Path.home() / ".config" / "fiat_lux" / "calendars.json"
+    config_file = Path.home() / ".config" / "heylux" / "calendars.json"
     if config_file.exists():
         try:
             config = json.loads(config_file.read_text())

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fiat_lux.routines import (
+from heylux.routines import (
     DEFAULT_ROUTINES,
     _load_routines,
     list_routines,
@@ -17,8 +17,8 @@ from fiat_lux.routines import (
 def routines_file(tmp_path, monkeypatch):
     """Redirect routines file to tmp dir."""
     f = tmp_path / "routines.json"
-    monkeypatch.setattr("fiat_lux.routines.ROUTINES_FILE", f)
-    monkeypatch.setattr("fiat_lux.routines.CONFIG_DIR", tmp_path)
+    monkeypatch.setattr("heylux.routines.ROUTINES_FILE", f)
+    monkeypatch.setattr("heylux.routines.CONFIG_DIR", tmp_path)
     return f
 
 
@@ -40,7 +40,7 @@ def mock_bridge():
     bridge = MagicMock()
     bridge.lights = [light1, light2, light3]
 
-    with patch("fiat_lux.routines._get_bridge", return_value=bridge):
+    with patch("heylux.routines._get_bridge", return_value=bridge):
         yield bridge
 
 
@@ -106,7 +106,7 @@ class TestRunRoutine:
     def test_bridge_error(self, routines_file):
         routines_file.write_text(json.dumps(DEFAULT_ROUTINES))
         with patch(
-            "fiat_lux.routines._get_bridge",
+            "heylux.routines._get_bridge",
             side_effect=RuntimeError("No bridge"),
         ):
             result = run_routine("bedtime")

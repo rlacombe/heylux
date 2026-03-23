@@ -1,10 +1,10 @@
-# Fiat-Lux
+# Hey Lux
 
-*"Let there be light."*
+**Voice-controlled smart lighting powered by circadian science and Claude**
 
-Meet **Lux** — a chronobiology-powered lighting agent for Philips Hue. Lux manages your lights for better focus, energy, and sleep, grounded in real photobiology research.
+*"Hey Lux, turn my lights to coding mode."*
 
-**Now with voice mode** — say "Hey Lux, turn my lights blue" and Lux listens, acts, and talks back.
+Meet **Lux** — an AI lighting assistant for Philips Hue that understands circadian science, adapts to weather, and responds to your voice. Say "Hey Lux" and talk naturally — Lux listens, acts, and talks back.
 
 <p align="center">
   <img src="docs/terminal.svg" alt="Lux terminal conversation" width="680">
@@ -103,8 +103,8 @@ User input ───┤
 ## Quickstart
 
 ```bash
-git clone https://github.com/rlacombe/fiat-lux.git
-cd fiat-lux
+git clone https://github.com/rlacombe/heylux.git
+cd heylux
 uv sync
 
 # Start Lux
@@ -212,7 +212,7 @@ lux "update my bedtime routine to keep the lantern on"
 
 ## Configuration
 
-Lux stores everything in `~/.config/fiat_lux/`:
+Lux stores everything in `~/.config/heylux/`:
 
 | File | Purpose |
 |---|---|
@@ -231,12 +231,12 @@ Lux stores everything in `~/.config/fiat_lux/`:
 
 ## MCP Server
 
-Fiat-Lux exposes all its lighting tools as an MCP server in the `fiat_lux/mcp/` package. Any AI agent can plug in and control your lights with circadian intelligence, weather awareness, and scheduling — no daemon required.
+Hey Lux exposes all its lighting tools as an MCP server in the `heylux/mcp/` package. Any AI agent can plug in and control your lights with circadian intelligence, weather awareness, and scheduling — no daemon required.
 
 ```python
-from fiat_lux.mcp.hue import ALL_HUE_TOOLS
-from fiat_lux.mcp.circadian import get_circadian_recommendation
-from fiat_lux.mcp.weather_tools import ALL_WEATHER_TOOLS
+from heylux.mcp.hue import ALL_HUE_TOOLS
+from heylux.mcp.circadian import get_circadian_recommendation
+from heylux.mcp.weather_tools import ALL_WEATHER_TOOLS
 ```
 
 See **[MCP_SERVER.md](MCP_SERVER.md)** for the full tool reference (20+ tools) and integration guide.

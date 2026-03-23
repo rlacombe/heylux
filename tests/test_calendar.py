@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from fiat_lux.calendar import _parse_events, get_upcoming_events
+from heylux.calendar import _parse_events, get_upcoming_events
 
 
 class TestParseEvents:
@@ -60,18 +60,18 @@ class TestParseEvents:
 
 
 class TestGetUpcomingEvents:
-    @patch("fiat_lux.calendar._load_config")
+    @patch("heylux.calendar._load_config")
     def test_returns_empty_when_no_calendars(self, mock_config):
         mock_config.return_value = {"calendars": []}
         assert get_upcoming_events() == []
 
-    @patch("fiat_lux.calendar._load_config")
+    @patch("heylux.calendar._load_config")
     def test_returns_empty_when_no_config(self, mock_config):
         mock_config.return_value = {}
         assert get_upcoming_events() == []
 
-    @patch("fiat_lux.calendar.subprocess.run")
-    @patch("fiat_lux.calendar._load_config")
+    @patch("heylux.calendar.subprocess.run")
+    @patch("heylux.calendar._load_config")
     def test_deduplicates_events(self, mock_config, mock_run):
         mock_config.return_value = {"calendars": ["Work"]}
         future = datetime.now() + timedelta(minutes=3)

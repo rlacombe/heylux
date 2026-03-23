@@ -1,7 +1,7 @@
-"""Fiat-Lux user memory — persistent user profile across sessions.
+"""Hey Lux user memory — persistent user profile across sessions.
 
 Stores user preferences, room layout, chronotype, and anything else
-Lux learns through conversation. Lives in ~/.config/fiat_lux/user.json.
+Lux learns through conversation. Lives in ~/.config/heylux/user.json.
 """
 
 import json
@@ -11,7 +11,7 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 USER_FILE = CONFIG_DIR / "user.json"
 
 

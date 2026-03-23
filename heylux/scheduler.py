@@ -1,6 +1,6 @@
 """Lighting scheduler — schedule transitions for future execution.
 
-Jobs are persisted to ~/.config/fiat_lux/schedule.json so they survive
+Jobs are persisted to ~/.config/heylux/schedule.json so they survive
 daemon restarts. The daemon runs a background loop that checks for due
 jobs every 10 seconds.
 
@@ -18,9 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fiat_lux.mcp.hue import _get_bridge, _normalize
+from heylux.mcp.hue import _get_bridge, _normalize
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 SCHEDULE_FILE = CONFIG_DIR / "schedule.json"
 
 POLL_INTERVAL = 10  # seconds

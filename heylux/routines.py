@@ -1,6 +1,6 @@
-"""Fiat-Lux routines — named lighting presets, configurable through conversation.
+"""Hey Lux routines — named lighting presets, configurable through conversation.
 
-Stored in ~/.config/fiat_lux/routines.json. Each routine defines which lights
+Stored in ~/.config/heylux/routines.json. Each routine defines which lights
 to turn on/off and their settings. Triggered instantly via shortcuts.
 """
 
@@ -10,9 +10,9 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-from fiat_lux.mcp.hue import _get_bridge, _normalize
+from heylux.mcp.hue import _get_bridge, _normalize
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 ROUTINES_FILE = CONFIG_DIR / "routines.json"
 
 # Default routines — seeded on first use, then user-customizable

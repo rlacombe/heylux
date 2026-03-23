@@ -4,7 +4,7 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-from fiat_lux.calendar import (
+from heylux.calendar import (
     icalbuddy_available,
     install_icalbuddy,
     list_calendars,

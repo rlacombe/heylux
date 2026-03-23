@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from fiat_lux.weather import (
+from heylux.weather import (
     WMO_CODES,
     _load_cache,
     _save_cache,
@@ -26,9 +26,9 @@ def weather_files(tmp_path, monkeypatch):
     """Redirect weather files to tmp dir."""
     config = tmp_path / "weather.json"
     cache = tmp_path / "weather_cache.json"
-    monkeypatch.setattr("fiat_lux.weather.WEATHER_CONFIG", config)
-    monkeypatch.setattr("fiat_lux.weather.WEATHER_CACHE", cache)
-    monkeypatch.setattr("fiat_lux.weather.CONFIG_DIR", tmp_path)
+    monkeypatch.setattr("heylux.weather.WEATHER_CONFIG", config)
+    monkeypatch.setattr("heylux.weather.WEATHER_CACHE", cache)
+    monkeypatch.setattr("heylux.weather.CONFIG_DIR", tmp_path)
     return config, cache
 
 
@@ -86,7 +86,7 @@ class TestGetWeather:
     def test_returns_none_without_location(self, weather_files):
         assert get_weather() is None
 
-    @patch("fiat_lux.weather.fetch_weather")
+    @patch("heylux.weather.fetch_weather")
     def test_fetches_when_no_cache(self, mock_fetch, weather_files):
         save_location(48.8566, 2.3522)
         mock_fetch.return_value = {

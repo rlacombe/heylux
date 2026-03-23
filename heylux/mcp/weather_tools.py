@@ -4,7 +4,7 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-from fiat_lux.weather import (
+from heylux.weather import (
     get_location,
     get_location_description,
     get_weather,

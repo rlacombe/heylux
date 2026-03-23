@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fiat_lux.pulse import candle_mode_loop
+from heylux.pulse import candle_mode_loop
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def mock_bridge():
         "state": {"on": True, "bri": 200, "colormode": "ct", "ct": 370}
     }
 
-    with patch("fiat_lux.pulse._get_bridge", return_value=bridge):
+    with patch("heylux.pulse._get_bridge", return_value=bridge):
         yield bridge
 
 

@@ -1,7 +1,7 @@
 [project]
-name = "fiat-lux"
+name = "heylux"
 version = "0.1.0"
-description = "A chronobiology-powered lighting agent for Philips Hue"
+description = "Hey Lux — voice-controlled smart lighting with circadian intelligence"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -32,8 +32,8 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["fiat_lux"]
+packages = ["heylux"]
 
 [project.scripts]
-lux = "fiat_lux.agent:main"
-lux-daemon = "fiat_lux.daemon:main"
+lux = "heylux.agent:main"
+lux-daemon = "heylux.daemon:main"

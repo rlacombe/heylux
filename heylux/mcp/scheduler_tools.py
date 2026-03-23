@@ -5,7 +5,7 @@ from typing import Any
 
 from claude_agent_sdk import tool
 
-from fiat_lux.scheduler import (
+from heylux.scheduler import (
     cancel_scheduled,
     list_scheduled,
     schedule_transition,

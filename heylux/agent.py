@@ -1,4 +1,4 @@
-"""Fiat-Lux CLI — thin client that talks to the Lux daemon.
+"""Hey Lux CLI — thin client that talks to the Lux daemon.
 
 Usage:
     lux                          Interactive mode
@@ -44,7 +44,7 @@ THEME = Theme({
 
 console = Console(theme=THEME)
 
-CONFIG_DIR = Path.home() / ".config" / "fiat_lux"
+CONFIG_DIR = Path.home() / ".config" / "heylux"
 SOCKET_PATH = CONFIG_DIR / "lux.sock"
 PID_FILE = CONFIG_DIR / "lux.pid"
 HISTORY_FILE = CONFIG_DIR / "history"
@@ -57,7 +57,7 @@ def _version() -> str:
     from importlib.metadata import version
 
     try:
-        return version("fiat-lux")
+        return version("heylux")
     except Exception:
         return "dev"
 
@@ -124,7 +124,7 @@ def _start_daemon() -> None:
     log_file = open(log_path, "a")
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "fiat_lux.daemon"],
+        [sys.executable, "-m", "heylux.daemon"],
         stdout=log_file,
         stderr=log_file,
         start_new_session=True,
@@ -363,7 +363,7 @@ def main() -> None:
     if args[0] in ("--help", "-h"):
         console.print(HELP_TEXT)
     elif args[0] in ("--version", "-v"):
-        console.print(f"[lux.title]fiat-lux[/lux.title] [lux.highlight]{_version()}[/lux.highlight]")
+        console.print(f"[lux.title]heylux[/lux.title] [lux.highlight]{_version()}[/lux.highlight]")
     elif args[0] == "start":
         _start_daemon()
     elif args[0] == "stop":
@@ -379,7 +379,7 @@ def main() -> None:
         time.sleep(1)
         _start_daemon()
     elif args[0] == "setup" and len(args) > 1 and args[1] == "calendar":
-        from fiat_lux.calendar import setup_interactive
+        from heylux.calendar import setup_interactive
 
         setup_interactive()
     elif args[0] == "setup" and len(args) > 1 and args[1] == "weather":
@@ -395,8 +395,8 @@ def main() -> None:
 def _load_voice_model():
     """Load Whisper model with a spinner. Returns (listen_once, speak) or (None, None)."""
     try:
-        from fiat_lux.voice import ensure_model, listen_once, speak
-        import fiat_lux.voice as voice_mod
+        from heylux.voice import ensure_model, listen_once, speak
+        import heylux.voice as voice_mod
         voice_mod._console = console
     except ImportError:
         console.print(
@@ -418,8 +418,8 @@ def _load_voice_model():
 def _do_voice_in_repl() -> None:
     """Handle a single voice command from within the REPL."""
     try:
-        from fiat_lux.voice import ensure_model, listen_once, speak
-        import fiat_lux.voice as voice_mod
+        from heylux.voice import ensure_model, listen_once, speak
+        import heylux.voice as voice_mod
         voice_mod._console = console
     except ImportError:
         console.print(
@@ -445,7 +445,7 @@ def _do_voice_in_repl() -> None:
     if text:
         console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
         _send_with_tts(text, speak)
-        from fiat_lux.voice import wait_for_speech
+        from heylux.voice import wait_for_speech
         wait_for_speech()
         console.print()
     else:
@@ -455,7 +455,7 @@ def _do_voice_in_repl() -> None:
 def _wake_mode() -> None:
     """Always-on wake word mode — records speech, checks for 'Hey Lux', executes."""
     try:
-        from fiat_lux.voice import (
+        from heylux.voice import (
             ensure_model,
             listen_for_wake_command,
             listen_once,
@@ -463,7 +463,7 @@ def _wake_mode() -> None:
             wait_for_speech,
             stop_speech,
         )
-        import fiat_lux.voice as voice_mod
+        import heylux.voice as voice_mod
         voice_mod._console = console
     except ImportError:
         console.print(

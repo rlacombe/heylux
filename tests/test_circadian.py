@@ -5,14 +5,14 @@ from unittest.mock import patch
 
 import pytest
 
-from fiat_lux.mcp.circadian import get_circadian_state
+from heylux.mcp.circadian import get_circadian_state
 
 
 @pytest.fixture(autouse=True)
 def no_weather():
     """Disable weather integration so tests use the static circadian curve."""
-    with patch("fiat_lux.weather.get_actual_sunrise_sunset", return_value=None), \
-         patch("fiat_lux.weather.get_brightness_adjustment", return_value=1.0):
+    with patch("heylux.weather.get_actual_sunrise_sunset", return_value=None), \
+         patch("heylux.weather.get_brightness_adjustment", return_value=1.0):
         yield
 
 

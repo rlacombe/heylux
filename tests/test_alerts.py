@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from fiat_lux.alerts import _cleanup_fired, _fired, _is_configured
+from heylux.alerts import _cleanup_fired, _fired, _is_configured
 
 
 class TestCleanupFired:
@@ -45,12 +45,12 @@ class TestAlertDedup:
 
 
 class TestIsConfigured:
-    @patch("fiat_lux.alerts.icalbuddy_available", return_value=False)
+    @patch("heylux.alerts.icalbuddy_available", return_value=False)
     def test_false_without_icalbuddy(self, _):
         assert _is_configured() is False
 
-    @patch("fiat_lux.alerts.icalbuddy_available", return_value=True)
-    @patch("fiat_lux.alerts.CALENDAR_CONFIG")
+    @patch("heylux.alerts.icalbuddy_available", return_value=True)
+    @patch("heylux.alerts.CALENDAR_CONFIG")
     def test_false_without_config_file(self, mock_path, _):
         mock_path.exists.return_value = False
         assert _is_configured() is False

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fiat_lux.shortcuts import (
+from heylux.shortcuts import (
     SHORTCUT_BREATHE_START,
     SHORTCUT_BREATHE_STOP,
     SHORTCUT_CANDLE_START,
@@ -30,7 +30,7 @@ def mock_bridge():
     bridge = MagicMock()
     bridge.lights = [light1, light2]
 
-    with patch("fiat_lux.shortcuts._get_bridge", return_value=bridge):
+    with patch("heylux.shortcuts._get_bridge", return_value=bridge):
         yield bridge
 
 
@@ -99,7 +99,7 @@ class TestBrightness:
 
 
 class TestCircadian:
-    @patch("fiat_lux.shortcuts.get_circadian_state")
+    @patch("heylux.shortcuts.get_circadian_state")
     def test_circadian(self, mock_state):
         mock_state.return_value = {
             "kelvin": 5000,
@@ -111,7 +111,7 @@ class TestCircadian:
         assert result is not None
         assert "Morning Focus" in result
 
-    @patch("fiat_lux.shortcuts.get_circadian_state")
+    @patch("heylux.shortcuts.get_circadian_state")
     def test_auto(self, mock_state):
         mock_state.return_value = {
             "kelvin": 5000,
@@ -124,7 +124,7 @@ class TestCircadian:
 
 
 class TestRoutines:
-    @patch("fiat_lux.shortcuts.list_routines")
+    @patch("heylux.shortcuts.list_routines")
     def test_list_routines(self, mock_list):
         mock_list.return_value = {"bedtime": "Reading in bed", "focus": "Deep work"}
         result = try_shortcut("routines")
@@ -132,13 +132,13 @@ class TestRoutines:
         assert "bedtime" in result
         assert "focus" in result
 
-    @patch("fiat_lux.shortcuts.run_routine")
+    @patch("heylux.shortcuts.run_routine")
     def test_named_routine(self, mock_run):
         mock_run.return_value = "Bedtime: Reading in bed"
         result = try_shortcut("bedtime")
         assert result == "Bedtime: Reading in bed"
 
-    @patch("fiat_lux.shortcuts.run_routine")
+    @patch("heylux.shortcuts.run_routine")
     def test_unknown_routine_returns_none(self, mock_run):
         mock_run.return_value = None
         result = try_shortcut("something weird Lux wouldn't know")
@@ -177,15 +177,15 @@ class TestBreathing:
 
 
 class TestFallthrough:
-    @patch("fiat_lux.shortcuts.run_routine", return_value=None)
+    @patch("heylux.shortcuts.run_routine", return_value=None)
     def test_unknown_command_returns_none(self, _):
         assert try_shortcut("make it feel like a sunset") is None
 
-    @patch("fiat_lux.shortcuts.run_routine", return_value=None)
+    @patch("heylux.shortcuts.run_routine", return_value=None)
     def test_empty_string_returns_none(self, _):
         assert try_shortcut("") is None
 
-    @patch("fiat_lux.shortcuts.run_routine", return_value=None)
+    @patch("heylux.shortcuts.run_routine", return_value=None)
     def test_case_insensitive(self, _):
         assert try_shortcut("BREATHE") == SHORTCUT_BREATHE_START
         assert try_shortcut("LIGHTS OFF") == SHORTCUT_BREATHE_STOP

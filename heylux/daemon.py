@@ -1,4 +1,4 @@
-"""Fiat-Lux daemon — persistent ClaudeSDKClient with Unix socket interface.
+"""Hey Lux daemon — persistent ClaudeSDKClient with Unix socket interface.
 
 Boots once, keeps the Claude session warm. The CLI connects to the socket
 to send prompts and stream responses. Shortcuts are intercepted before
@@ -19,26 +19,26 @@ from claude_agent_sdk import (
     create_sdk_mcp_server,
 )
 
-from fiat_lux.alerts import alert_loop
-from fiat_lux.pulse import breathing_mode_loop, candle_mode_loop
-from fiat_lux.routines import ALL_ROUTINE_TOOLS
-from fiat_lux.scheduler import scheduler_loop
-from fiat_lux.shortcuts import (
+from heylux.alerts import alert_loop
+from heylux.pulse import breathing_mode_loop, candle_mode_loop
+from heylux.routines import ALL_ROUTINE_TOOLS
+from heylux.scheduler import scheduler_loop
+from heylux.shortcuts import (
     try_shortcut,
     SHORTCUT_BREATHE_START,
     SHORTCUT_BREATHE_STOP,
     SHORTCUT_CANDLE_START,
 )
-from fiat_lux.mcp.calendar_tools import ALL_CALENDAR_TOOLS
-from fiat_lux.mcp.circadian import get_circadian_recommendation, configure_light_map
-from fiat_lux.mcp.hue import ALL_HUE_TOOLS, get_lights_context
-from fiat_lux.mcp.memory import ALL_MEMORY_TOOLS, get_profile_context
-from fiat_lux.mcp.weather_tools import ALL_WEATHER_TOOLS
-from fiat_lux.weather import get_weather_context
-from fiat_lux.mcp.scheduler_tools import ALL_SCHEDULER_TOOLS
+from heylux.mcp.calendar_tools import ALL_CALENDAR_TOOLS
+from heylux.mcp.circadian import get_circadian_recommendation, configure_light_map
+from heylux.mcp.hue import ALL_HUE_TOOLS, get_lights_context
+from heylux.mcp.memory import ALL_MEMORY_TOOLS, get_profile_context
+from heylux.mcp.weather_tools import ALL_WEATHER_TOOLS
+from heylux.weather import get_weather_context
+from heylux.mcp.scheduler_tools import ALL_SCHEDULER_TOOLS
 
-SOCKET_PATH = Path.home() / ".config" / "fiat_lux" / "lux.sock"
-PID_FILE = Path.home() / ".config" / "fiat_lux" / "lux.pid"
+SOCKET_PATH = Path.home() / ".config" / "heylux" / "lux.sock"
+PID_FILE = Path.home() / ".config" / "heylux" / "lux.pid"
 BASE_SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.md").read_text()
 
 # Background breathing mode task
@@ -144,18 +144,18 @@ def _build_options() -> ClaudeAgentOptions:
         *ALL_SCHEDULER_TOOLS,
         *ALL_WEATHER_TOOLS,
     ]
-    fiat_lux_tools = create_sdk_mcp_server(
-        name="fiat_lux",
+    heylux_tools = create_sdk_mcp_server(
+        name="heylux",
         version="0.1.0",
         tools=all_sdk_tools,
     )
     # Pre-load tool names so Claude doesn't need ToolSearch
-    tool_names = [f"mcp__fiat_lux__{t.name}" for t in all_sdk_tools]
+    tool_names = [f"mcp__heylux__{t.name}" for t in all_sdk_tools]
     return ClaudeAgentOptions(
         system_prompt=_build_system_prompt(),
-        mcp_servers={"fiat_lux": fiat_lux_tools},
+        mcp_servers={"heylux": heylux_tools},
         tools=tool_names,
-        allowed_tools=["mcp__fiat_lux__*"],
+        allowed_tools=["mcp__heylux__*"],
         permission_mode="acceptEdits",
         max_turns=10,
         setting_sources=[],
@@ -182,7 +182,7 @@ def _resolve_light_ids(light_name: str) -> list[int] | None:
     if not light_name:
         return None
     try:
-        from fiat_lux.mcp.hue import _get_bridge, _normalize
+        from heylux.mcp.hue import _get_bridge, _normalize
         b = _get_bridge()
         name_map = {_normalize(l.name).lower(): l.light_id for l in b.lights}
         lid = name_map.get(_normalize(light_name).lower())
@@ -233,7 +233,7 @@ async def _handle_ambient(shortcut_result: str) -> str:
         if was_running:
             return "Ambient mode stopped. Lights restored."
         # Not in ambient mode — just turn everything off
-        from fiat_lux.shortcuts import _all_off
+        from heylux.shortcuts import _all_off
         return _all_off()
 
     # Any other shortcut: stop ambient mode if active
@@ -347,7 +347,7 @@ async def _handle_client(
 
 
 async def run_daemon() -> None:
-    """Start the Fiat-Lux daemon."""
+    """Start the Hey Lux daemon."""
     # Clean up stale socket
     SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
     if SOCKET_PATH.exists():

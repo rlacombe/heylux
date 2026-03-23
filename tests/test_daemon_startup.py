@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fiat_lux.agent import _start_daemon, SOCKET_PATH, PID_FILE
+from heylux.agent import _start_daemon, SOCKET_PATH, PID_FILE
 
 
 @pytest.fixture(autouse=True)
@@ -16,8 +16,8 @@ def tmp_paths(tmp_path, monkeypatch):
     """Redirect socket/PID paths to a temp dir so tests don't touch real config."""
     sock = tmp_path / "lux.sock"
     pid = tmp_path / "lux.pid"
-    monkeypatch.setattr("fiat_lux.agent.SOCKET_PATH", sock)
-    monkeypatch.setattr("fiat_lux.agent.PID_FILE", pid)
+    monkeypatch.setattr("heylux.agent.SOCKET_PATH", sock)
+    monkeypatch.setattr("heylux.agent.PID_FILE", pid)
     return sock, pid
 
 
@@ -25,7 +25,7 @@ def tmp_paths(tmp_path, monkeypatch):
 def mock_console(monkeypatch):
     """Capture console output."""
     console = MagicMock()
-    monkeypatch.setattr("fiat_lux.agent.console", console)
+    monkeypatch.setattr("heylux.agent.console", console)
     return console
 
 
@@ -44,10 +44,10 @@ class TestStartDaemonFailFast:
         fake_proc.returncode = 1
 
         with (
-            patch("fiat_lux.agent._daemon_running", return_value=False),
-            patch("fiat_lux.agent.subprocess.Popen", return_value=fake_proc),
-            patch("fiat_lux.agent.Path.home", return_value=tmp_path),
-            patch("fiat_lux.agent.time.sleep") as mock_sleep,
+            patch("heylux.agent._daemon_running", return_value=False),
+            patch("heylux.agent.subprocess.Popen", return_value=fake_proc),
+            patch("heylux.agent.Path.home", return_value=tmp_path),
+            patch("heylux.agent.time.sleep") as mock_sleep,
         ):
             start = time.monotonic()
             _start_daemon()
@@ -79,10 +79,10 @@ class TestStartDaemonFailFast:
         fake_proc.poll.side_effect = poll_side_effect
 
         with (
-            patch("fiat_lux.agent._daemon_running", return_value=False),
-            patch("fiat_lux.agent.subprocess.Popen", return_value=fake_proc),
-            patch("fiat_lux.agent.Path.home", return_value=tmp_path),
-            patch("fiat_lux.agent.time.sleep", side_effect=sleep_side_effect),
+            patch("heylux.agent._daemon_running", return_value=False),
+            patch("heylux.agent.subprocess.Popen", return_value=fake_proc),
+            patch("heylux.agent.Path.home", return_value=tmp_path),
+            patch("heylux.agent.time.sleep", side_effect=sleep_side_effect),
         ):
             _start_daemon()
 
@@ -91,7 +91,7 @@ class TestStartDaemonFailFast:
 
     def test_skips_if_already_running(self, tmp_paths, mock_console):
         """If the daemon is already running, don't start a new one."""
-        with patch("fiat_lux.agent._daemon_running", return_value=True):
+        with patch("heylux.agent._daemon_running", return_value=True):
             _start_daemon()
 
         printed = " ".join(str(c) for c in mock_console.print.call_args_list)

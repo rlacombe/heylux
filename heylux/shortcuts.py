@@ -6,9 +6,9 @@ Returns None if the command doesn't match any known pattern.
 
 import re
 
-from fiat_lux.mcp.circadian import get_circadian_state
-from fiat_lux.mcp.hue import _get_bridge
-from fiat_lux.routines import run_routine, list_routines
+from heylux.mcp.circadian import get_circadian_state
+from heylux.mcp.hue import _get_bridge
+from heylux.routines import run_routine, list_routines
 
 BRIGHTNESS_STEP = 20  # percent per brighter/dimmer
 

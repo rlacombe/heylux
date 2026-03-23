@@ -9,8 +9,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from fiat_lux.calendar import get_upcoming_events, icalbuddy_available, CALENDAR_CONFIG
-from fiat_lux.pulse import pulse_heads_up, pulse_starting_now
+from heylux.calendar import get_upcoming_events, icalbuddy_available, CALENDAR_CONFIG
+from heylux.pulse import pulse_heads_up, pulse_starting_now
 
 # Alert thresholds in minutes
 HEADS_UP_MINUTES = 5.0

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from fiat_lux.scheduler import (
+from heylux.scheduler import (
     _execute_transition,
     _cleanup_past_jobs,
     _load_schedule,
@@ -21,8 +21,8 @@ from fiat_lux.scheduler import (
 def schedule_file(tmp_path, monkeypatch):
     """Redirect schedule file to tmp dir."""
     f = tmp_path / "schedule.json"
-    monkeypatch.setattr("fiat_lux.scheduler.SCHEDULE_FILE", f)
-    monkeypatch.setattr("fiat_lux.scheduler.CONFIG_DIR", tmp_path)
+    monkeypatch.setattr("heylux.scheduler.SCHEDULE_FILE", f)
+    monkeypatch.setattr("heylux.scheduler.CONFIG_DIR", tmp_path)
     return f
 
 
@@ -40,7 +40,7 @@ def mock_bridge():
     bridge = MagicMock()
     bridge.lights = [light1, light2]
 
-    with patch("fiat_lux.scheduler._get_bridge", return_value=bridge):
+    with patch("heylux.scheduler._get_bridge", return_value=bridge):
         yield bridge
 
 
@@ -133,7 +133,7 @@ class TestExecuteTransition:
             "description": "Sunrise",
         }
 
-        with patch("fiat_lux.scheduler.time.sleep"):
+        with patch("heylux.scheduler.time.sleep"):
             _execute_transition(job)
 
         calls = mock_bridge.set_light.call_args_list
@@ -162,7 +162,7 @@ class TestExecuteTransition:
             "description": "Long ramp",
         }
 
-        with patch("fiat_lux.scheduler.time.sleep"):
+        with patch("heylux.scheduler.time.sleep"):
             _execute_transition(job)
 
         calls = mock_bridge.set_light.call_args_list
@@ -182,7 +182,7 @@ class TestExecuteTransition:
             "description": "Late sunrise",
         }
 
-        with patch("fiat_lux.scheduler.time.sleep"):
+        with patch("heylux.scheduler.time.sleep"):
             _execute_transition(job)
 
         calls = mock_bridge.set_light.call_args_list
