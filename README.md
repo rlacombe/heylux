@@ -18,7 +18,7 @@ Named after [Augustin-Jean Fresnel](https://en.wikipedia.org/wiki/Augustin-Jean_
 
 ```bash
 # Clone and install
-git clone https://github.com/romainMusic/fresnel.git
+git clone https://github.com/rlacombe/fresnel.git
 cd fresnel
 uv sync
 
