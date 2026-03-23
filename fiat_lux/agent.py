@@ -513,6 +513,19 @@ def _wake_mode() -> None:
         wait_for_speech()
         console.print()
 
+        # Multi-turn: keep listening for follow-ups without wake word
+        while True:
+            console.print("[lux.highlight]Listening...[/lux.highlight]")
+            text = listen_once()
+            if text:
+                console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
+                _send_with_tts(text, speak)
+                wait_for_speech()
+                console.print()
+            else:
+                # Silence — back to waiting for wake word
+                break
+
 
 if __name__ == "__main__":
     main()
