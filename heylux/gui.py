@@ -272,8 +272,10 @@ class HeyLuxApp(rumps.App):
                 # Speak the response
                 if response:
                     self._set_status(ICON_SPEAKING)
+                    log.info("Speaking response...")
                     _speak(response)
                     _wait_for_speech()
+                    log.info("Done speaking")
 
                 # Multi-turn: listen for follow-up
                 while self._running:
