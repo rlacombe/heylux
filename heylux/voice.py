@@ -320,6 +320,7 @@ WAKE_PHRASES = {
     "hey docs", "hey docks", "hey vox", "hey box",
     "hey lax", "hey luxe", "hey luks", "hey luke",
     "a lux", "haylux", "hey, lux", "he lux", "hey lex",
+    "hey, lex", "hey, lucks", "hey, luck", "hey, lox",
 }
 
 
@@ -346,6 +347,13 @@ def listen_for_wake_command() -> str | None:
         return None
 
     text_lower = text.lower().strip()
+
+    # Strip common Whisper artifacts at the start (filler words, punctuation)
+    for prefix in ("hi. ", "hi, ", "hello. ", "hello, ", "oh, ", "um, ", "uh, "):
+        if text_lower.startswith(prefix):
+            text_lower = text_lower[len(prefix):]
+            text = text[len(prefix):]
+            break
 
     # Log what Whisper heard for debugging
     import logging
