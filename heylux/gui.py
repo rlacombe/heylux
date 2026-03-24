@@ -117,18 +117,18 @@ def _listen_for_command() -> str | None:
 
 
 def _send_to_daemon(prompt: str) -> str:
-    """Send a prompt to the daemon and collect the text response."""
+    """Send a prompt to the daemon, speak first block immediately, return full response."""
     import asyncio
 
     async def _send():
         reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
-        # Send with voice flag
         writer.write(
             json.dumps({"prompt": prompt, "voice": True}).encode() + b"\n"
         )
         await writer.drain()
 
         text_blocks = []
+        spoken_first = False
         while True:
             line = await asyncio.wait_for(reader.readline(), timeout=120)
             if not line:
@@ -136,12 +136,22 @@ def _send_to_daemon(prompt: str) -> str:
             msg = json.loads(line.decode())
             if msg["type"] == "text":
                 text_blocks.append(msg["text"])
+                # Speak the first block immediately (the ack)
+                if not spoken_first:
+                    log.info(f"Speaking ack: {msg['text'][:60]}")
+                    _speak(msg["text"])
+                    spoken_first = True
             elif msg["type"] == "done":
                 break
 
         writer.close()
         await writer.wait_closed()
-        return " ".join(text_blocks)
+
+        # Return the last block (confirmation) for the caller to speak
+        # First block was already spoken
+        if len(text_blocks) > 1:
+            return text_blocks[-1]
+        return ""
 
     return asyncio.run(_send())
 
