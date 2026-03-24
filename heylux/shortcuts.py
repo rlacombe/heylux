@@ -30,9 +30,31 @@ def _parse_duration(text: str) -> tuple[str, float]:
     return text, 0
 
 
+def _clean_voice_text(text: str) -> str:
+    """Strip filler words that voice transcription adds but don't affect intent.
+
+    Handles: "the", "my", "please", "for me", trailing punctuation,
+    leading politeness ("can you", "could you please"), and inverted
+    forms like "set the nightstand to candle".
+    """
+    # Strip trailing punctuation and filler phrases
+    text = re.sub(r'[.,!?]+$', '', text).strip()
+    text = re.sub(r'\s+(please|for me|for us)\s*$', '', text).strip()
+    # Strip leading filler
+    text = re.sub(r'^(can you |could you |please )+(set |turn |put |switch )?', '', text).strip()
+    # "set X to candle" / "turn X to candle" → "candle on X"
+    m = re.match(r'^(?:set|turn|put|switch)\s+(.+?)\s+to\s+(candle|candlelight|candle mode|breathe|breathing)$', text)
+    if m:
+        text = f"{m.group(2)} on {m.group(1)}"
+    # Strip articles/possessives before light names (after "on")
+    text = re.sub(r'\bon\s+(the|my|our)\s+', 'on ', text)
+    return text
+
+
 def try_shortcut(text: str) -> str | None:
     """Try to handle a command directly. Returns response text, or None to fall through to LLM."""
     text = text.strip().lower()
+    text = _clean_voice_text(text)
 
     # --- Ambient modes (optionally targeting specific lights and duration) ---
     # Exact matches first, then parameterized

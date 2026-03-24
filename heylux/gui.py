@@ -294,7 +294,8 @@ class HeyLuxApp(rumps.App):
                             break
                         if response:
                             self._set_status(ICON_SPEAKING)
-                            _speak(response)
+                            # Response was already spoken during streaming
+                            # in _send_to_daemon — just wait for it to finish
                             _wait_for_speech()
                     else:
                         # Silence — back to wake word mode

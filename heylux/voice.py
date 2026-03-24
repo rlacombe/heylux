@@ -227,14 +227,26 @@ TTS_VOICE = "en-US-AndrewNeural"
 
 
 def speak(text: str, voice: str = TTS_VOICE) -> None:
-    """Speak text aloud using Edge TTS (neural voice). Non-blocking."""
+    """Speak text aloud using Edge TTS (neural voice). Non-blocking.
+
+    Each call cancels any in-flight speech (both generation and playback)
+    using an epoch counter to prevent overlapping audio.
+    """
     import threading
+    global _speak_epoch
 
     # Strip markdown formatting that sounds weird spoken
     clean = text.replace("**", "").replace("*", "").replace("`", "")
     # Limit length
     if len(clean) > 500:
         clean = clean[:500] + "..."
+
+    # Bump epoch so any in-flight speech thread knows to bail out
+    _speak_epoch += 1
+    my_epoch = _speak_epoch
+
+    # Kill any currently playing audio
+    _stop_current_speech()
 
     def _speak():
         import asyncio
@@ -247,7 +259,9 @@ def speak(text: str, voice: str = TTS_VOICE) -> None:
                     tmp = f.name
                 comm = edge_tts.Communicate(clean, voice)
                 await comm.save(tmp)
-                # afplay plays audio directly through speakers, no GUI
+                # Check if we've been superseded before playing
+                if _speak_epoch != my_epoch:
+                    return
                 subprocess.run(
                     ["afplay", tmp],
                     stdout=subprocess.DEVNULL,
@@ -256,6 +270,8 @@ def speak(text: str, voice: str = TTS_VOICE) -> None:
 
             asyncio.run(_generate_and_play())
         except Exception:
+            if _speak_epoch != my_epoch:
+                return
             # Fall back to macOS say
             try:
                 subprocess.run(
@@ -266,9 +282,6 @@ def speak(text: str, voice: str = TTS_VOICE) -> None:
             except FileNotFoundError:
                 pass
 
-    # Kill any currently playing speech first
-    _stop_current_speech()
-
     # Run in background thread so it doesn't block the UI
     t = threading.Thread(target=_speak, daemon=True)
     t.start()
@@ -277,6 +290,7 @@ def speak(text: str, voice: str = TTS_VOICE) -> None:
 
 # Track active speak threads so we can wait for them before exit
 _speak_threads: list[threading.Thread] = []
+_speak_epoch: int = 0
 
 
 def _stop_current_speech() -> None:

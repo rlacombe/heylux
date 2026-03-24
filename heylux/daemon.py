@@ -20,7 +20,6 @@ from claude_agent_sdk import (
 )
 
 from heylux.alerts import alert_loop
-from heylux.pulse import breathing_mode_loop, candle_mode_loop
 from heylux.routines import ALL_ROUTINE_TOOLS
 from heylux.scheduler import scheduler_loop
 from heylux.shortcuts import (
@@ -28,6 +27,12 @@ from heylux.shortcuts import (
     SHORTCUT_BREATHE_START,
     SHORTCUT_BREATHE_STOP,
     SHORTCUT_CANDLE_START,
+)
+from heylux.mcp.ambient import (
+    ALL_AMBIENT_TOOLS,
+    start_candle,
+    start_breathe,
+    stop_ambient,
 )
 from heylux.mcp.calendar_tools import ALL_CALENDAR_TOOLS
 from heylux.mcp.circadian import get_circadian_recommendation, configure_light_map
@@ -40,9 +45,6 @@ from heylux.mcp.scheduler_tools import ALL_SCHEDULER_TOOLS
 SOCKET_PATH = Path.home() / ".config" / "heylux" / "lux.sock"
 PID_FILE = Path.home() / ".config" / "heylux" / "lux.pid"
 BASE_SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.md").read_text()
-
-# Background breathing mode task
-_breathing_task: asyncio.Task | None = None
 
 
 def _build_system_prompt() -> str:
@@ -138,6 +140,7 @@ def _build_options() -> ClaudeAgentOptions:
         get_circadian_recommendation,
         configure_light_map,
         *ALL_HUE_TOOLS,
+        *ALL_AMBIENT_TOOLS,
         *ALL_MEMORY_TOOLS,
         *ALL_ROUTINE_TOOLS,
         *ALL_CALENDAR_TOOLS,
@@ -162,21 +165,6 @@ def _build_options() -> ClaudeAgentOptions:
     )
 
 
-async def _stop_breathing() -> bool:
-    """Stop the breathing mode if active. Returns True if it was running."""
-    global _breathing_task
-    if _breathing_task is not None and not _breathing_task.done():
-        _breathing_task.cancel()
-        try:
-            await _breathing_task
-        except asyncio.CancelledError:
-            pass
-        _breathing_task = None
-        return True
-    _breathing_task = None
-    return False
-
-
 def _resolve_light_ids(light_name: str) -> list[int] | None:
     """Resolve a light name to IDs. Returns None for all lights."""
     if not light_name:
@@ -198,9 +186,11 @@ def _resolve_light_ids(light_name: str) -> list[int] | None:
 
 
 async def _handle_ambient(shortcut_result: str) -> str:
-    """Handle ambient mode start/stop signals from shortcuts."""
-    global _breathing_task
+    """Handle ambient mode start/stop signals from shortcuts.
 
+    Uses shared state from heylux.mcp.ambient so both shortcuts and
+    Claude tool calls manage the same ambient task.
+    """
     # Parse optional light name and fade duration from sentinel
     # Format: SENTINEL or SENTINEL:light_name or SENTINEL:light_name:fade_minutes
     light_name = ""
@@ -219,17 +209,15 @@ async def _handle_ambient(shortcut_result: str) -> str:
     fade_label = f", fading out over {int(fade_minutes)}min" if fade_minutes else ""
 
     if shortcut_result == SHORTCUT_BREATHE_START:
-        await _stop_breathing()
-        _breathing_task = asyncio.create_task(breathing_mode_loop(light_ids))
+        await start_breathe(light_ids)
         return f"Breathing mode started{light_label}. Say 'stop' to end."
 
     if shortcut_result == SHORTCUT_CANDLE_START:
-        await _stop_breathing()
-        _breathing_task = asyncio.create_task(candle_mode_loop(light_ids, fade_out_minutes=fade_minutes))
+        await start_candle(light_ids, fade_out_minutes=fade_minutes)
         return f"Candle mode started{light_label}{fade_label}. Say 'stop' to end."
 
     if shortcut_result == SHORTCUT_BREATHE_STOP:
-        was_running = await _stop_breathing()
+        was_running = await stop_ambient()
         if was_running:
             return "Ambient mode stopped. Lights restored."
         # Not in ambient mode — just turn everything off
@@ -237,8 +225,9 @@ async def _handle_ambient(shortcut_result: str) -> str:
         return _all_off()
 
     # Any other shortcut: stop ambient mode if active
-    if _breathing_task is not None and not _breathing_task.done():
-        await _stop_breathing()
+    from heylux.mcp.ambient import _ambient_task
+    if _ambient_task is not None and not _ambient_task.done():
+        await stop_ambient()
 
     return shortcut_result
 
@@ -281,7 +270,7 @@ async def _handle_client(
             return
 
         # Any non-shortcut command stops breathing mode
-        await _stop_breathing()
+        await stop_ambient()
 
         # Inject voice mode instructions if needed
         if voice_mode:
@@ -398,7 +387,7 @@ async def run_daemon() -> None:
             await stop.wait()
 
         # Shutdown background tasks
-        await _stop_breathing()
+        await stop_ambient()
         for task in (alert_task, scheduler_task):
             task.cancel()
             try:
