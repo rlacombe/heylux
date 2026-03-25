@@ -654,10 +654,7 @@ _speech_worker = None
 
 def wait_for_speech() -> None:
     """Wait for all queued TTS to finish playing."""
-    _speech_queue.join()  # blocks until queue is drained
-    # Also wait for worker thread to finish current playback
-    if _speech_worker is not None and _speech_worker.is_alive():
-        _speech_worker.join(timeout=15)
+    _speech_queue.join()  # blocks until all queued items are spoken
 
 
 def stop_speech() -> None:

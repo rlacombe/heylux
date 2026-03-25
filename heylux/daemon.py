@@ -128,7 +128,7 @@ def _inject_voice_mode(options: ClaudeAgentOptions) -> None:
         options.system_prompt += VOICE_MODE_PROMPT
     _original_model = options.model
     options.model = VOICE_MODEL
-    options.max_turns = 3  # keep it fast
+    options.max_turns = 2  # tool calls + response, nothing more
 
 
 def _remove_voice_mode(options: ClaudeAgentOptions) -> None:
