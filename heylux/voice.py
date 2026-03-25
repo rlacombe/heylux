@@ -192,6 +192,12 @@ def record_until_silence(
                         _status(f"{bar} hearing you")
                     else:
                         _status(f"{bar} waiting")
+                else:
+                    # Minimal feedback in wake mode — show when hearing speech
+                    if has_speech:
+                        _status("\033[1;38;2;158;206;106m\u25cf recording...\033[0m")
+                    elif level > threshold:
+                        _status("\033[1;38;2;224;175;104m\u25cf hearing you\033[0m")
 
                 if level > threshold:
                     if not has_speech:
