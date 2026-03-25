@@ -285,7 +285,7 @@ def listen_once() -> str | None:
 # Kokoro voice preset (see mlx-audio docs for available voices)
 KOKORO_VOICE = "af_aoede"
 # Edge TTS fallback voice
-EDGE_TTS_VOICE = "en-US-AndrewNeural"
+EDGE_TTS_VOICE = "en-US-AriaNeural"
 
 # Lazy-loaded Kokoro TTS model
 _tts_model = None
