@@ -15,6 +15,18 @@ from heylux.mcp.hue import _get_bridge, _normalize
 CONFIG_DIR = Path.home() / ".config" / "heylux"
 ROUTINES_FILE = CONFIG_DIR / "routines.json"
 
+# After run_routine(), the daemon should check this for ambient modes to start.
+# Format: {"mode": "candle"|"breathe", "light_ids": [...], "fade_out_minutes": 0}
+_pending_ambient: dict[str, Any] | None = None
+
+
+def pop_pending_ambient() -> dict[str, Any] | None:
+    """Return and clear any pending ambient mode from the last routine run."""
+    global _pending_ambient
+    result = _pending_ambient
+    _pending_ambient = None
+    return result
+
 # Default routines — seeded on first use, then user-customizable
 DEFAULT_ROUTINES: dict[str, Any] = {
     "bedtime": {
@@ -94,7 +106,15 @@ def list_routines() -> dict[str, str]:
 
 
 def run_routine(name: str) -> str | None:
-    """Execute a routine by name. Returns status text, or None if not found."""
+    """Execute a routine by name. Returns status text, or None if not found.
+
+    Lights with "mode": "candle" or "mode": "breathe" are not set statically.
+    Instead, they are stored in _pending_ambient for the daemon to start
+    after the routine completes. Call pop_pending_ambient() to retrieve them.
+    """
+    global _pending_ambient
+    _pending_ambient = None
+
     routines = _load_routines()
     routine = routines.get(name.lower())
     if routine is None:
@@ -129,11 +149,23 @@ def run_routine(name: str) -> str | None:
     # Turn on lights with settings
     on_lights = routine.get("lights_on", {})
     on_ids = set()
+    ambient_lights: dict[str, list[int]] = {}  # mode -> [light_ids]
+    ambient_fade = 0.0
     for lname, settings in on_lights.items():
         lid = name_map.get(_normalize(lname).lower())
         if lid is None:
             continue
         on_ids.add(lid)
+
+        # Ambient mode: collect for daemon to start after routine
+        mode = settings.get("mode", "").lower()
+        if mode in ("candle", "candlelight", "breathe", "breathing"):
+            mode_key = "candle" if mode in ("candle", "candlelight") else "breathe"
+            ambient_lights.setdefault(mode_key, []).append(lid)
+            ambient_fade = settings.get("fade_out_minutes", 0)
+            # Turn the light on so candle mode has something to work with
+            b.set_light(lid, {"on": True, "transitiontime": transitiontime})
+            continue
 
         cmd: dict[str, Any] = {"on": True, "transitiontime": transitiontime}
         if "brightness_pct" in settings:
@@ -144,12 +176,24 @@ def run_routine(name: str) -> str | None:
             cmd["hue"] = int(settings["hue"])
         if "saturation" in settings:
             cmd["sat"] = int(settings["saturation"])
+        if "xy" in settings:
+            cmd["xy"] = settings["xy"]
 
         b.set_light(lid, cmd)
 
     # Turn off (but don't turn off lights that were explicitly turned on)
     for lid in off_ids - on_ids:
         b.set_light(lid, {"on": False, "transitiontime": transitiontime})
+
+    # Store pending ambient for the daemon to pick up
+    if ambient_lights:
+        # Use the first mode found (candle takes priority if both present)
+        mode = "candle" if "candle" in ambient_lights else "breathe"
+        _pending_ambient = {
+            "mode": mode,
+            "light_ids": [lid for ids in ambient_lights.values() for lid in ids],
+            "fade_out_minutes": ambient_fade,
+        }
 
     desc = routine.get("description", name)
     return f"{name.capitalize()}: {desc}"
@@ -200,7 +244,10 @@ async def list_routines_tool(args: dict[str, Any]) -> dict[str, Any]:
                 "description": (
                     "Lights to turn on. Keys are light names, values are objects "
                     "with optional brightness_pct (0-100), kelvin (2000-6500), "
-                    "hue (0-65535), saturation (0-254)."
+                    "hue (0-65535), saturation (0-254), "
+                    'mode ("candle" or "breathe" for ambient animation — '
+                    "overrides static settings on that light), "
+                    "fade_out_minutes (for candle mode, 0 = run forever)."
                 ),
             },
             "lights_off": {

@@ -262,6 +262,18 @@ async def _handle_client(
             # Handle breathing mode start/stop
             shortcut_result = await _handle_ambient(shortcut_result)
 
+            # Check if the routine wants to start an ambient mode (candle/breathe)
+            from heylux.routines import pop_pending_ambient
+            pending = pop_pending_ambient()
+            if pending:
+                mode = pending["mode"]
+                light_ids = pending["light_ids"]
+                fade = pending.get("fade_out_minutes", 0)
+                if mode == "candle":
+                    await start_candle(light_ids, fade_out_minutes=fade)
+                elif mode == "breathe":
+                    await start_breathe(light_ids)
+
             writer.write(
                 json.dumps({"type": "text", "text": shortcut_result}).encode() + b"\n"
             )

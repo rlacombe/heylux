@@ -258,30 +258,33 @@ _CANDLE_XY_1400K = (0.5850, 0.3930)  # very deep red — dimmest moments
 _CANDLE_XY_1500K = (0.5790, 0.3960)  # center — deep red candle
 _CANDLE_XY_1700K = (0.5650, 0.4030)  # warm amber — brightest moments
 
-# Brightness: moderate dynamic range, less extreme dips
-CANDLE_BRI_BASELINE = 150   # ~59% — resting brightness
-CANDLE_BRI_HIGH = 200       # ~79% — swell peak
-CANDLE_BRI_LOW = 80         # ~31% — swell trough (gentler than before)
+# Brightness: two-layer design
+#   Layer 1 — slow swell: lazy sinusoidal undulation (the main movement)
+#   Layer 2 — fast shimmer: tiny Perlin jitter (adds life without distraction)
+# Each light follows its own independent random pattern (decorrelated offsets).
+CANDLE_BRI_BASELINE = 165   # ~65% — resting brightness
+CANDLE_BRI_HIGH = 190       # ~75% — swell peak
+CANDLE_BRI_LOW = 140        # ~55% — swell trough, always readable
 
-# Slow breathing swell
-CANDLE_SWELL_PERIOD = (5.0, 9.0)  # seconds per cycle
+# Slow swell — lazy, hypnotic wave you barely notice consciously
+CANDLE_SWELL_PERIOD = (10.0, 18.0)  # seconds per cycle
 
-# Flicker: moderate amplitude, fast pace
-CANDLE_FLICKER_RANGE = 40   # +/- from swell position
+# Fast shimmer — tiny amplitude, just barely visible, adds organic life
+CANDLE_FLICKER_RANGE = 10   # +/- from swell position (very subtle)
 
-# Gust: less deep, still frequent
-CANDLE_GUST_BRI = (15, 35)       # dips but doesn't nearly snuff out
-CANDLE_GUST_INTERVAL = (8.0, 18.0)
-CANDLE_GUST_DIP_TT = (2, 5)      # fast dip: 0.2-0.5s
-CANDLE_GUST_RECOVER_TT = (18, 35)  # slow recovery: 1.8-3.5s
+# Gust: gentle dips, won't lose your page
+CANDLE_GUST_BRI = (80, 110)      # barely noticeable
+CANDLE_GUST_INTERVAL = (15.0, 30.0)
+CANDLE_GUST_DIP_TT = (3, 6)      # fast dip: 0.3-0.6s
+CANDLE_GUST_RECOVER_TT = (20, 40)  # slow recovery: 2.0-4.0s
 
-# Near-extinguishment: less frequent, less extreme
-CANDLE_NEAR_SNUFF_CHANCE = 0.03   # 3% per tick
-CANDLE_NEAR_SNUFF_BRI = (8, 20)
-CANDLE_NEAR_SNUFF_TT = (1, 3)
+# Near-extinguishment: disabled — no surprise dips while reading
+CANDLE_NEAR_SNUFF_CHANCE = 0.0
+CANDLE_NEAR_SNUFF_BRI = (80, 100)
+CANDLE_NEAR_SNUFF_TT = (2, 4)
 
-# Tick timing: fast for lively flicker
-CANDLE_TICK_INTERVAL = (0.35, 0.9)  # faster updates
+# Tick timing: fast updates so shimmer feels smooth, not steppy
+CANDLE_TICK_INTERVAL = (0.3, 0.6)
 
 
 def _perlin_1d(t: float) -> float:
@@ -336,18 +339,16 @@ def _candle_xy_for_brightness(bri: int) -> list[float]:
 
 
 def _candle_tick(bridge, light_ids: list[int], tick_time: float,
-                 per_light_offsets: dict[int, float], breath_bri: int,
+                 per_light_offsets: dict[int, float],
+                 per_light_bri: dict[int, int],
                  fade: float) -> None:
-    """One flicker tick — each light gets Perlin-noise jitter around the swell."""
+    """One shimmer tick — each light gets tiny Perlin jitter around its own swell."""
     for lid in light_ids:
-        # Per-light Perlin noise at different time offsets (decorrelation)
-        noise = _perlin_1d(tick_time * 1.3 + per_light_offsets[lid])
+        breath_bri = per_light_bri[lid]
 
-        # Asymmetric flicker: dips are larger than peaks (flame mostly stays bright)
-        if noise < 0:
-            jitter = noise * CANDLE_FLICKER_RANGE * 1.5  # larger dips
-        else:
-            jitter = noise * CANDLE_FLICKER_RANGE * 0.6  # smaller peaks
+        # Fast shimmer: tiny Perlin noise, symmetric (no asymmetric dips)
+        noise = _perlin_1d(tick_time * 2.0 + per_light_offsets[lid])
+        jitter = noise * CANDLE_FLICKER_RANGE
 
         bri = round(breath_bri + jitter)
         bri = max(1, min(254, round(bri * fade)))
@@ -394,12 +395,15 @@ async def candle_mode_loop(
 ) -> None:
     """Run continuous candle mode on lights until cancelled.
 
-    Three-layer simulation:
-      1. Slow swell: sinusoidal breathing baseline (period 8-14s)
-      2. Perlin flicker: per-light noise with asymmetric dips (~1 update/sec)
-      3. Wind gusts: fast dips with slow damped recovery (every 15-35s)
+    Two-layer simulation per light:
+      1. Slow swell: lazy sinusoidal undulation (the main visible movement)
+      2. Fast shimmer: tiny Perlin-noise jitter (adds organic life)
+    Plus occasional gentle wind gusts.
 
-    Color is coupled to brightness along the Planckian locus (1750-2100K)
+    Each light is fully independent — its own swell period, swell phase,
+    and Perlin noise offset, so multiple candles never look synchronized.
+
+    Color is coupled to brightness along the Planckian locus (1400-1700K)
     using CIE xy coordinates, reaching below Hue's 2000K ct floor.
 
     If fade_out_minutes > 0, gradually dims over that duration then turns off.
@@ -413,8 +417,13 @@ async def candle_mode_loop(
 
     saved = _save_all_states(b)
 
-    # Per-light Perlin noise offsets for decorrelation
+    # Per-light independent parameters for full decorrelation:
+    #   - Perlin noise offset: different shimmer pattern per light
+    #   - Swell period: each light breathes at its own pace
+    #   - Swell phase offset: lights start at different points in their cycle
     per_light_offsets = {lid: random.uniform(0, 100) for lid in light_ids}
+    per_light_swell_period = {lid: random.uniform(*CANDLE_SWELL_PERIOD) for lid in light_ids}
+    per_light_swell_phase = {lid: random.uniform(0, 1) for lid in light_ids}
 
     # Fade into candle color
     xy_start = _candle_xy_for_brightness(CANDLE_BRI_BASELINE)
@@ -428,7 +437,6 @@ async def candle_mode_loop(
     await asyncio.sleep(2.2)
 
     try:
-        swell_period = random.uniform(*CANDLE_SWELL_PERIOD)
         next_gust = asyncio.get_event_loop().time() + random.uniform(*CANDLE_GUST_INTERVAL)
         start_time = asyncio.get_event_loop().time()
         fade_out_seconds = fade_out_minutes * 60
@@ -447,10 +455,17 @@ async def candle_mode_loop(
             else:
                 fade = 1.0
 
-            # Slow sinusoidal swell — the "breathing" baseline
-            phase = (elapsed % swell_period) / swell_period
-            wave = (math.sin(phase * 2 * math.pi - math.pi / 2) + 1) / 2
-            breath_bri = round(CANDLE_BRI_LOW + wave * (CANDLE_BRI_HIGH - CANDLE_BRI_LOW))
+            # Per-light independent swell — each light has its own period and phase
+            per_light_bri = {}
+            for lid in light_ids:
+                period = per_light_swell_period[lid]
+                phase_offset = per_light_swell_phase[lid]
+                phase = ((elapsed / period) + phase_offset) % 1.0
+                wave = (math.sin(phase * 2 * math.pi - math.pi / 2) + 1) / 2
+                per_light_bri[lid] = round(CANDLE_BRI_LOW + wave * (CANDLE_BRI_HIGH - CANDLE_BRI_LOW))
+
+            # Use average swell for gust recovery target
+            avg_bri = sum(per_light_bri.values()) // len(per_light_bri)
 
             # Wind gust check
             if now >= next_gust:
@@ -458,19 +473,16 @@ async def candle_mode_loop(
                 dip_time = random.uniform(0.3, 0.8)
                 await asyncio.sleep(dip_time)
                 await asyncio.to_thread(
-                    _candle_recover, b, light_ids, breath_bri, per_light_offsets
+                    _candle_recover, b, light_ids, avg_bri, per_light_offsets
                 )
                 recover_time = random.uniform(2.5, 4.5)
                 await asyncio.sleep(recover_time)
                 next_gust = now + random.uniform(*CANDLE_GUST_INTERVAL)
-                # Occasionally vary the swell period to prevent long-term patterns
-                swell_period = random.uniform(*CANDLE_SWELL_PERIOD)
             else:
-                # Perlin flicker tick
-                tick_time = elapsed
+                # Fast shimmer tick — tiny jitter on each light's own swell
                 await asyncio.to_thread(
-                    _candle_tick, b, light_ids, tick_time,
-                    per_light_offsets, breath_bri, fade,
+                    _candle_tick, b, light_ids, elapsed,
+                    per_light_offsets, per_light_bri, fade,
                 )
                 await asyncio.sleep(random.uniform(*CANDLE_TICK_INTERVAL))
 
