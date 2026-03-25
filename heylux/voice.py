@@ -336,8 +336,16 @@ def speak(text: str) -> None:
     import threading
     global _speak_epoch
 
+    import re as _re
     # Strip markdown formatting that sounds weird spoken
     clean = text.replace("**", "").replace("*", "").replace("`", "")
+    # Strip emoji — they get spoken as words like "green heart" by TTS
+    clean = _re.sub(
+        r'[\U0001F300-\U0001F9FF\U00002600-\U000027BF\U0000FE00-\U0000FEFF\U0001FA00-\U0001FAFF]+',
+        '', clean
+    ).strip()
+    if not clean:
+        return
     # Limit length
     if len(clean) > 500:
         clean = clean[:500] + "..."

@@ -118,7 +118,7 @@ def _listen_for_command() -> str | None:
 
 
 def _send_to_daemon(prompt: str) -> str:
-    """Send a prompt to the daemon, speak first block immediately, return full response."""
+    """Send a prompt to the daemon, collect all text, speak once at the end."""
     import asyncio
 
     async def _send():
@@ -136,16 +136,19 @@ def _send_to_daemon(prompt: str) -> str:
             msg = json.loads(line.decode())
             if msg["type"] == "text":
                 text_blocks.append(msg["text"])
-                # Speak each block as it arrives
-                log.info(f"Speaking: {msg['text'][:60]}")
-                _speak(msg["text"])
             elif msg["type"] == "done":
                 break
 
         writer.close()
         await writer.wait_closed()
 
-        return " ".join(text_blocks)
+        # Speak all text as one utterance
+        full_text = " ".join(text_blocks)
+        if full_text.strip():
+            log.info(f"Speaking: {full_text[:80]}")
+            _speak(full_text)
+
+        return full_text
 
     return asyncio.run(_send())
 

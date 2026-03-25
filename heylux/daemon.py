@@ -113,10 +113,11 @@ GOOD examples (complete responses — nothing else):
 - "Bright cool focus lighting. Let's go!"
 - "All off. Goodnight!"
 
-BAD examples (too long, too verbose, speaks before tools):
+BAD examples (NEVER do these):
 - "Setting up a sunrise glow for you!" ← NO, don't speak before tools
 - "Your room is now glowing in warm golden ambers..." ← NO, way too long
 - "The nightstand has deeper amber while the ceiling..." ← NO, don't list lights
+- "💜💚" or any emoji ← ABSOLUTELY NO EMOJI, they get spoken as words by TTS
 """
 
 # Use Haiku in voice mode for speed
