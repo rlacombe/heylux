@@ -75,7 +75,7 @@ def _get_whisper_model():
     try:
         import mlx_whisper
         import numpy as _np
-        model_name = config.get("model", "mlx-community/whisper-tiny")
+        model_name = config.get("model", "mlx-community/whisper-base-mlx")
         log.info(f"Loading mlx-whisper model: {model_name}")
         # Warm up: run a tiny transcription to force model download + compilation.
         # Without this, the first real transcription is slow (~5s extra).
@@ -274,20 +274,28 @@ def transcribe(audio: np.ndarray) -> str:
 
 
 def _is_hallucination(text: str) -> bool:
-    """Detect whisper-tiny hallucinations: repeated phrases on quiet audio."""
+    """Detect whisper hallucinations: same phrase repeated 3+ times."""
     import re
     # Normalize: lowercase, strip punctuation, collapse whitespace
     clean = re.sub(r'[^\w\s]', '', text.lower())
     clean = re.sub(r'\s+', ' ', clean).strip()
     words = clean.split()
-    if len(words) < 4:
+    if len(words) < 8:
         return False
-    # Check if the text is just the same short phrase repeated
-    for phrase_len in range(1, min(9, len(words) // 2 + 1)):
+    # Check if the text is the same short phrase repeated 3+ times
+    for phrase_len in range(1, min(9, len(words) // 3 + 1)):
         phrase = " ".join(words[:phrase_len])
-        rest = " ".join(words[phrase_len:])
-        if rest.startswith(phrase):
-            log.info(f"[stt] hallucination detected: '{phrase}' repeated")
+        repetitions = 0
+        pos = 0
+        while pos + phrase_len <= len(words):
+            chunk = " ".join(words[pos:pos + phrase_len])
+            if chunk == phrase:
+                repetitions += 1
+                pos += phrase_len
+            else:
+                break
+        if repetitions >= 3:
+            log.info(f"[stt] hallucination detected: '{phrase}' repeated {repetitions}x")
             return True
     return False
 
