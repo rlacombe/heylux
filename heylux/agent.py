@@ -207,7 +207,7 @@ async def _send_to_daemon(prompt: str) -> None:
             elif msg["type"] == "done":
                 break
     except asyncio.TimeoutError:
-        console.print("[lux.error]Daemon not responding (timed out after 30s).[/lux.error]")
+        console.print(f"[lux.error]Daemon not responding (timed out after {SEND_TIMEOUT}s).[/lux.error]")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -229,7 +229,7 @@ def _send_with_tts(prompt: str, speak_fn) -> None:
 
 
 async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
-    """Send prompt in voice mode. Speak first text block, display the rest."""
+    """Send prompt in voice mode. Speak every text block as it arrives."""
     reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
 
     try:
@@ -238,7 +238,6 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
         await writer.drain()
 
         first_text = True
-        text_blocks = []
         while True:
             line = await asyncio.wait_for(reader.readline(), timeout=SEND_TIMEOUT)
             if not line:
@@ -252,10 +251,8 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
                     console.print("[lux.label]Lux:[/lux.label]")
                     first_text = False
                 console.print(Markdown(msg["text"]), style="lux.text")
-                text_blocks.append(msg["text"])
-                # Speak the first block immediately (the ack before tools)
-                if len(text_blocks) == 1:
-                    speak_fn(msg["text"])
+                # Speak every block — daemon sends sentence-level chunks
+                speak_fn(msg["text"])
             elif msg["type"] == "tool":
                 console.print(f"[lux.tool]  -> {msg['name']}[/lux.tool]")
             elif msg["type"] == "error":
@@ -263,12 +260,8 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
             elif msg["type"] == "done":
                 break
 
-        # Speak the last block too (the confirmation after tools)
-        if len(text_blocks) > 1:
-            speak_fn(text_blocks[-1])
-
     except asyncio.TimeoutError:
-        console.print("[lux.error]Daemon not responding (timed out).[/lux.error]")
+        console.print(f"[lux.error]Daemon not responding (timed out after {SEND_TIMEOUT}s).[/lux.error]")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -307,6 +300,11 @@ def _save_readline() -> None:
         pass
 
 
+# ANSI-colored prompt for input() — uses \001/\002 markers so readline
+# correctly calculates visible prompt length (prevents cursor corruption).
+_PROMPT = "\001\033[1;38;2;125;207;255m\002You:\001\033[0m\002 "
+
+
 def _interactive() -> None:
     """Interactive REPL — all messages go through the daemon."""
     if not _daemon_running():
@@ -323,7 +321,10 @@ def _interactive() -> None:
     try:
         while True:
             try:
-                user_input = console.input("[lux.user]You:[/lux.user] ").strip()
+                # Use input() with ANSI prompt + readline markers, not
+                # console.input() — Rich markup confuses readline's cursor
+                # positioning and causes the prompt to disappear on long lines.
+                user_input = input(_PROMPT).strip()
             except (EOFError, KeyboardInterrupt):
                 console.print("\n[lux.dim]Goodbye![/lux.dim]")
                 break
@@ -339,7 +340,7 @@ def _interactive() -> None:
                 _do_voice_in_repl()
                 continue
 
-            readline.add_history(user_input)
+            # input() already adds to readline history — don't double-add
 
             console.print()
             _send(user_input)
@@ -401,52 +402,51 @@ def main() -> None:
         _send(prompt)
 
 
-def _load_voice_model():
-    """Load Whisper model with a spinner. Returns (listen_once, speak) or (None, None)."""
+# ---------------------------------------------------------------------------
+# Voice helpers — shared loading, cached across calls
+# ---------------------------------------------------------------------------
+
+_voice_ready = False
+
+
+def _ensure_voice() -> bool:
+    """Load voice models (STT + TTS) once, cached for subsequent calls.
+
+    Returns True if voice is ready, False if deps are missing.
+    """
+    global _voice_ready
+    if _voice_ready:
+        return True
+
     try:
-        from heylux.voice import ensure_model, listen_once, speak
-        import heylux.voice as voice_mod
-        voice_mod._console = console
-    except ImportError:
-        console.print(
-            "[lux.error]Voice dependencies not installed.[/lux.error]\n"
-            "[lux.dim]Install with: uv sync --extra voice[/lux.dim]"
-        )
-        return None, None
-
-    with console.status("[lux.highlight]Loading voice model...", spinner="dots"):
-        try:
-            ensure_model()
-            from heylux.voice import _ensure_tts
-            _ensure_tts()
-        except ImportError as e:
-            console.print(f"[lux.error]{e}[/lux.error]")
-            return None, None
-
-    return listen_once, speak
-
-
-def _do_voice_in_repl() -> None:
-    """Handle a single voice command from within the REPL."""
-    try:
-        from heylux.voice import ensure_model, listen_once, speak
+        from heylux.voice import ensure_model, _ensure_tts
         import heylux.voice as voice_mod
         voice_mod._console = console
     except ImportError:
         console.print(
             "[lux.error]Voice deps not installed.[/lux.error] "
-            "[lux.dim]Run: uv sync --extra voice[/lux.dim]\n"
+            "[lux.dim]Run: uv sync --extra voice[/lux.dim]"
         )
-        return
+        return False
 
     with console.status("[lux.highlight]Loading voice model...", spinner="dots"):
         try:
             ensure_model()
-            from heylux.voice import _ensure_tts
             _ensure_tts()
         except ImportError as e:
-            console.print(f"[lux.error]{e}[/lux.error]\n")
-            return
+            console.print(f"[lux.error]{e}[/lux.error]")
+            return False
+
+    _voice_ready = True
+    return True
+
+
+def _do_voice_in_repl() -> None:
+    """Handle a single voice command from within the REPL."""
+    if not _ensure_voice():
+        return
+
+    from heylux.voice import listen_once, speak, wait_for_speech
 
     console.print("[lux.highlight]Listening...[/lux.highlight]")
     try:
@@ -458,7 +458,6 @@ def _do_voice_in_repl() -> None:
     if text:
         console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
         _send_with_tts(text, speak)
-        from heylux.voice import wait_for_speech
         wait_for_speech()
         console.print()
     else:
@@ -467,26 +466,16 @@ def _do_voice_in_repl() -> None:
 
 def _wake_mode() -> None:
     """Always-on wake word mode — records speech, checks for 'Hey Lux', executes."""
-    try:
-        from heylux.voice import (
-            ensure_model,
-            listen_for_wake_command,
-            listen_once,
-            speak,
-            wait_for_speech,
-            stop_speech,
-        )
-        import heylux.voice as voice_mod
-        voice_mod._console = console
-    except ImportError:
-        console.print(
-            "[lux.error]Voice deps not installed.[/lux.error] "
-            "[lux.dim]Run: uv sync --extra voice[/lux.dim]"
-        )
+    if not _ensure_voice():
         return
 
-    with console.status("[lux.highlight]Loading voice model...", spinner="dots"):
-        ensure_model()
+    from heylux.voice import (
+        listen_for_wake_command,
+        listen_once,
+        speak,
+        wait_for_speech,
+        stop_speech,
+    )
 
     if not _daemon_running():
         _start_daemon()
@@ -525,19 +514,6 @@ def _wake_mode() -> None:
         _send_with_tts(command, speak)
         wait_for_speech()
         console.print()
-
-        # Multi-turn: keep listening for follow-ups without wake word
-        while True:
-            console.print("[lux.highlight]Listening...[/lux.highlight]")
-            text = listen_once()
-            if text:
-                console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
-                _send_with_tts(text, speak)
-                wait_for_speech()
-                console.print()
-            else:
-                # Silence — back to waiting for wake word
-                break
 
 
 def voice_main() -> None:

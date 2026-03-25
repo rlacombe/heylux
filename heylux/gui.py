@@ -282,27 +282,6 @@ class HeyLuxApp(rumps.App):
                     _wait_for_speech()
                     log.info("Done speaking")
 
-                # Multi-turn: listen for follow-up
-                while self._running:
-                    self._set_status(ICON_LISTENING)
-                    follow_up = _listen_for_command()
-                    log.info(f"Multi-turn: {follow_up!r}")
-                    if follow_up:
-                        self._set_status(ICON_PROCESSING)
-                        try:
-                            response = _send_to_daemon(follow_up)
-                        except Exception:
-                            break
-                        if response:
-                            self._set_status(ICON_SPEAKING)
-                            # Response was already spoken during streaming
-                            # in _send_to_daemon — just wait for it to finish
-                            _wait_for_speech()
-                    else:
-                        # Silence — back to wake word mode
-                        log.info("Silence — returning to wake word mode")
-                        break
-
             except Exception as e:
                 log.error(f"Voice loop error: {e}", exc_info=True)
                 time.sleep(1)

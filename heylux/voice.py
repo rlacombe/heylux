@@ -30,11 +30,11 @@ VOICE_CONFIG = CONFIG_DIR / "voice.json"
 # Audio settings
 SAMPLE_RATE = 16000  # Whisper expects 16kHz
 CHANNELS = 1  # mono
-SILENCE_DURATION = 2.0  # seconds of silence after speech to auto-stop
+SILENCE_DURATION = 1.0  # seconds of silence after speech to auto-stop (was 2.0)
 MAX_DURATION = 120  # max recording seconds (silence detection is the real stop)
-CALIBRATION_SECONDS = 0.5  # measure ambient noise before listening
+CALIBRATION_SECONDS = 0.3  # measure ambient noise before listening (was 0.5)
 THRESHOLD_MULTIPLIER = 3.5  # speech must be Nx louder than ambient (rejects keyboard clicks)
-MIN_RECORD_SECONDS = 1.0  # always record at least this long before checking silence
+MIN_RECORD_SECONDS = 0.5  # always record at least this long before checking silence (was 1.0)
 
 # Set by agent.py to enable volume meter display
 _console = None
@@ -74,7 +74,7 @@ def _get_whisper_model():
     try:
         import mlx_whisper
         import numpy as _np
-        model_name = config.get("model", "mlx-community/whisper-large-v3-turbo")
+        model_name = config.get("model", "mlx-community/distil-whisper-large-v3")
         log.info(f"Loading mlx-whisper model: {model_name}")
         # Warm up: run a tiny transcription to force model download + compilation.
         # Without this, the first real transcription is slow (~5s extra).
@@ -212,6 +212,7 @@ def transcribe(audio: np.ndarray) -> str:
     """Transcribe audio using the loaded STT model.
 
     Automatically uses whichever backend was loaded (mlx-whisper or openai-whisper).
+    Logs timing for performance monitoring.
 
     Args:
         audio: float32 numpy array at 16kHz.
@@ -219,25 +220,31 @@ def transcribe(audio: np.ndarray) -> str:
     Returns:
         Transcribed text, stripped.
     """
+    import time as _time
     model = _get_whisper_model()
+
+    t0 = _time.monotonic()
+    audio_secs = len(audio) / SAMPLE_RATE
 
     if _stt_backend == "mlx-whisper":
         import mlx_whisper
-        # mlx_whisper.transcribe() takes a numpy array and model path
         result = mlx_whisper.transcribe(
             audio,
-            path_or_hf_repo=model,  # model is the model name string
+            path_or_hf_repo=model,
             language="en",
         )
-        return result.get("text", "").strip()
+        text = result.get("text", "").strip()
     else:
-        # openai-whisper: takes numpy array directly
         result = model.transcribe(
             audio,
             language="en",
-            fp16=False,  # CPU/MPS compatibility
+            fp16=False,
         )
-        return result["text"].strip()
+        text = result["text"].strip()
+
+    elapsed = _time.monotonic() - t0
+    log.info(f"Transcribed {audio_secs:.1f}s audio in {elapsed:.2f}s: '{text[:60]}'")
+    return text
 
 
 def ensure_model() -> None:
