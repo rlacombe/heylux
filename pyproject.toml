@@ -48,3 +48,4 @@ packages = ["heylux"]
 lux = "heylux.agent:main"
 lux-daemon = "heylux.daemon:main"
 lux-app = "heylux.gui:main"
+lux-voice = "heylux.agent:voice_main"

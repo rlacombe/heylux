@@ -540,5 +540,12 @@ def _wake_mode() -> None:
                 break
 
 
+def voice_main() -> None:
+    """Entry point for lux-voice — goes straight to wake word mode."""
+    import warnings
+    warnings.filterwarnings("ignore", message=".*resource_tracker.*leaked semaphore.*")
+    _wake_mode()
+
+
 if __name__ == "__main__":
     main()

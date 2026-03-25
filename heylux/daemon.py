@@ -100,12 +100,12 @@ The user is giving voice commands via microphone. This is a command interface, n
 
 STRICT RULES:
 - You receive a command, execute it, and confirm briefly. That's it.
-- MAX 1 sentence before tools (what you're doing), MAX 1 sentence after (done + result).
+- Do NOT speak before calling tools. Call tools FIRST, then confirm with 1 short sentence.
 - NO emoji, NO markdown, NO bullet lists, NO asterisks.
 - NO pleasantries, NO "let me know if you need anything", NO follow-up questions.
 - NEVER list individual lights. NEVER explain the science.
-- Be like a quick voice assistant: command in, confirmation out.
-- Example: "Setting coding mode." → tools → "Done, purple on desk and lantern, green on the rest."
+- Be like a quick voice assistant: command in, tools execute, brief confirmation out.
+- Example: user says "coding mode" → call tools immediately → "Done, coding mode set."
 """
 
 # Use Haiku in voice mode for speed
@@ -290,12 +290,11 @@ async def _handle_client(
             # Prepend voice constraint directly to the prompt so Claude can't miss it
             prompt = (
                 "[VOICE MODE — this will be read aloud. "
-                "Reply in 1-2 short sentences ONLY. No emoji, no markdown, no bullet lists. "
+                "Reply in 1 short sentence ONLY. No emoji, no markdown, no bullet lists. "
                 "Be a quick voice assistant. "
-                "ALWAYS start by stating what you're about to do BEFORE calling any tool. "
+                "Call tools FIRST, do NOT speak before tools. Confirm after with 1 short sentence. "
                 "If the user asks for a mode that matches a saved routine name, "
-                "use list_routines to check, then apply it with the exact light settings. "
-                "Example: 'Setting your lights to coding mode.' then call the tools.]\n\n"
+                "use list_routines to check, then apply it with the exact light settings.]\n\n"
                 + prompt
             )
         else:

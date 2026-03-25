@@ -33,7 +33,7 @@ CHANNELS = 1  # mono
 SILENCE_DURATION = 2.0  # seconds of silence after speech to auto-stop
 MAX_DURATION = 120  # max recording seconds (silence detection is the real stop)
 CALIBRATION_SECONDS = 0.5  # measure ambient noise before listening
-THRESHOLD_MULTIPLIER = 2.0  # speech must be Nx louder than ambient
+THRESHOLD_MULTIPLIER = 3.5  # speech must be Nx louder than ambient (rejects keyboard clicks)
 MIN_RECORD_SECONDS = 1.0  # always record at least this long before checking silence
 
 # Set by agent.py to enable volume meter display
