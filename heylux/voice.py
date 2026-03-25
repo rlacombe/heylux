@@ -72,14 +72,17 @@ def _get_whisper_model():
 
     # Try mlx-whisper first (fast, Apple Silicon native via Metal)
     try:
-        import mlx_whisper  # noqa: F401
-        # mlx-whisper uses a model path/name — we store it for transcribe()
+        import mlx_whisper
+        import numpy as _np
         model_name = config.get("model", "mlx-community/whisper-large-v3-turbo")
         log.info(f"Loading mlx-whisper model: {model_name}")
-        # Pre-load by running a tiny transcription (mlx-whisper is functional, not OOP)
-        _model = model_name  # store model name, mlx_whisper.transcribe() takes it
+        # Warm up: run a tiny transcription to force model download + compilation.
+        # Without this, the first real transcription is slow (~5s extra).
+        _silence = _np.zeros(SAMPLE_RATE, dtype=_np.float32)  # 1s of silence
+        mlx_whisper.transcribe(_silence, path_or_hf_repo=model_name, language="en")
+        _model = model_name
         _stt_backend = "mlx-whisper"
-        log.info("mlx-whisper loaded successfully")
+        log.info("mlx-whisper loaded and warmed up")
         return _model
     except ImportError:
         log.info("mlx-whisper not available, trying openai-whisper")
