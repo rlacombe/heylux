@@ -75,7 +75,7 @@ def _get_whisper_model():
     try:
         import mlx_whisper
         import numpy as _np
-        model_name = config.get("model", "mlx-community/whisper-base-mlx")
+        model_name = config.get("model", "mlx-community/whisper-small-mlx")
         log.info(f"Loading mlx-whisper model: {model_name}")
         # Warm up: run a tiny transcription to force model download + compilation.
         # Without this, the first real transcription is slow (~5s extra).
