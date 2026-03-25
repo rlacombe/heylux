@@ -1,13 +1,13 @@
 """Voice input/output — microphone capture, STT transcription, and TTS.
 
 Requires optional dependencies: `uv sync --extra voice`
-  - lightning-whisper-mlx (fast local STT on Apple Silicon)
+  - mlx-whisper (fast local STT on Apple Silicon via Metal GPU)
   - sounddevice (microphone capture)
-  - mlx-audio (Kokoro TTS — fast local text-to-speech)
+  - mlx-audio + misaki (Kokoro TTS — fast local text-to-speech)
 
 Fallback chain:
-  STT: lightning-whisper-mlx → openai-whisper → error
-  TTS: Kokoro (mlx-audio) → edge-tts → macOS `say`
+  STT: mlx-whisper (whisper-small-mlx) → openai-whisper → error
+  TTS: Kokoro (persistent worker subprocess) → edge-tts → macOS `say`
 """
 
 from __future__ import annotations

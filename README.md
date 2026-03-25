@@ -51,18 +51,17 @@ Lux: Night stand set to deep amber (2200K) at 40%. At this color temperature,
 ```
 [Voice mode]
 
-You: Hey Lux, switch to coding mode.
-Lux: Setting coding mode now.
-     → set_lights (x4)
-Lux: Done, purple on desk and library, green on the rest.
+You: Hey Lux, coding mode.
+     → set_lights (x2)
+Lux: Purple and green coding vibes. Happy hacking!
 ```
 
 ## Features
 
-- **Voice control** — say "Hey Lux" to wake, give a command, hear the response. Local Whisper STT, neural TTS, wake word detection. No cloud mic required.
+- **Voice control** — say "Hey Lux" to wake, give a command, hear the response. Local [MLX Whisper](https://github.com/ml-explore/mlx-examples) STT + [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) TTS, all on-device via Metal. No cloud mic.
 - **Instant commands** — "lights off", "bedtime", "focus", "brighter" execute directly (<1s)
 - **Named routines** — "bedtime", "morning", "focus", "coding" — customizable through conversation
-- **Ambient modes** — "candle" for flickering candlelight, "breathe" for slow breathing glow
+- **Ambient modes** — "candle" for physics-based flickering candlelight, "breathe" for slow breathing glow. Routines can include ambient modes.
 - **Natural language** — "make it Rilakkuma-colored", "sunset in my room" via Claude
 - **Circadian automation** — time-based lighting grounded in melanopsin sensitivity and melatonin research
 - **Weather-adaptive** — boosts brightness on cloudy days, shifts circadian curve to actual sunrise/sunset
@@ -70,17 +69,20 @@ Lux: Done, purple on desk and library, green on the rest.
 - **Calendar alerts** — synchronized light pulses before meetings (slow amber wave at T-5min, fast blue chirp at T-15s)
 - **Persistent daemon** — boots once, stays warm, every command after that is fast
 - **User memory** — Lux learns your name, room layout, sleep habits across sessions
+- **macOS menubar app** — `lux-app` sits in the status bar, always listening
 - **MCP server** — other AI agents can plug into Lux's lighting tools
 - **Built-in Hue control** — no external MCP servers needed
 
 ## Architecture
 
-Lux runs as a daemon with three interaction modes:
+Lux runs as a daemon with four interaction modes:
 
 ```
               ┌─ Text REPL (lux)
-User input ───┤
-              ├─ Voice ("Hey Lux")  →  Whisper STT  →  daemon  →  Edge TTS
+              │
+User input ───┼─ Voice (lux-voice / lux listen)  →  MLX Whisper STT  →  daemon  →  Kokoro TTS
+              │
+              ├─ Menubar app (lux-app)
               │
               └─ One-shot (lux "lights off")
                         │
@@ -89,14 +91,16 @@ User input ───┤
                         │
                 ├─ Shortcuts (regex + routines)  →  direct phue  < 1s
                 │
-                └─ Claude (persistent session)   →  tool calls   ~ 5s
+                └─ Claude (persistent session)   →  tool calls   ~ 5-15s
                 │
                 └─ Background: calendar alerts, scheduler, ambient modes
 ```
 
-**Shortcuts** pattern-match common commands, named routines, and ambient modes, executing directly via phue. No LLM, no network latency.
+**Shortcuts** pattern-match common commands, named routines, and ambient modes, executing directly via phue. No LLM, no network latency. Voice-friendly: "turn my lights to coding mode", "activate focus", "set circadian" all match.
 
 **Claude** handles everything else via a persistent `ClaudeSDKClient` session. The daemon boots the Claude Code process once and keeps it warm — subsequent messages skip the cold start. Voice mode uses Haiku for faster responses.
+
+**Voice pipeline**: MLX Whisper (local STT, ~0.1s) → daemon → Kokoro TTS (local, persistent worker subprocess, ~0.4s generation). Speech queue streams sentences to TTS as they arrive from Claude. End-to-end timing displayed after each command.
 
 **Background tasks** run in the daemon's async event loop: calendar alerts poll every 30s, the scheduler checks for due transitions every 10s, and ambient modes (candle/breathing) run continuous light animations.
 
@@ -117,10 +121,12 @@ uv run lux setup          # guided Hue Bridge pairing
 
 Requires a Claude Code subscription (Pro/Max). No API key needed if you're logged in.
 
-To avoid typing `uv run` every time, create a symlink:
+To avoid typing `uv run` every time, create symlinks:
 
 ```bash
 ln -s $(uv run which lux) ~/.local/bin/lux
+ln -s $(uv run which lux-voice) ~/.local/bin/lux-voice
+ln -s $(uv run which lux-app) ~/.local/bin/lux-app
 ```
 
 Make sure `~/.local/bin` is in your `PATH`.
@@ -129,10 +135,22 @@ Make sure `~/.local/bin` is in your `PATH`.
 
 ```bash
 uv sync --extra voice
-lux listen                 # say "Hey Lux" followed by a command
+lux-voice                  # always-on "Hey Lux" wake word mode
+lux listen                 # same thing
 ```
 
-Voice uses [MLX Whisper](https://github.com/ml-explore/mlx-examples) (local STT) and [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) (local TTS) — both run on Apple Silicon via Metal. First run downloads the models (~1GB total).
+Voice uses [MLX Whisper](https://github.com/ml-explore/mlx-examples) (`whisper-small-mlx`) for local STT and [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) (`af_aoede` voice) for local TTS — both run on Apple Silicon via Metal GPU. First run downloads the models (~1GB total).
+
+Override the STT model or TTS voice in `~/.config/heylux/voice.json`:
+
+```json
+{
+  "model": "mlx-community/distil-whisper-large-v3",
+  "kokoro_voice": "am_adam"
+}
+```
+
+Run `uv run scripts/sample-voices.py` to audition all available Kokoro voices.
 
 ## Usage
 
@@ -149,11 +167,25 @@ Type `listen` or `voice` inside the REPL to switch to mic input.
 ### Voice mode
 
 ```bash
-lux listen                 # always-on: "Hey Lux" wake word
-lux --voice                # same as listen
+lux-voice                  # always-on: "Hey Lux" wake word
+lux listen                 # same as lux-voice
+lux --voice                # same as lux-voice
 ```
 
-Say "Hey Lux" followed by your command. Lux transcribes locally with Whisper, executes, and responds aloud with a neural voice. Supports multi-turn — keep talking after a response, or pause to return to wake word mode.
+Say "Hey Lux" followed by your command. Lux transcribes locally, executes, and responds aloud. Each command shows timing:
+
+```
+Purple and green coding vibes. Happy hacking!
+17.1s | lights 8.2s | voice 4.8s
+```
+
+### Menubar app
+
+```bash
+lux-app                    # macOS status bar app
+```
+
+Sits in the menubar, always listening for "Hey Lux". Can start/stop the daemon.
 
 ### All commands
 
@@ -202,7 +234,7 @@ lux "setup weather"        # auto-detect location, connect Open-Meteo
 # Calendar alerts
 lux setup calendar         # choose which calendars to monitor
 
-# Natural language (~ 5s, via Claude)
+# Natural language (~ 5-15s, via Claude)
 lux "make it cozy"
 lux "sunset in my room"
 lux "update my bedtime routine to keep the lantern on"
@@ -216,14 +248,15 @@ Lux stores everything in `~/.config/heylux/`:
 |---|---|
 | `hue.json` | Bridge IP and API credentials |
 | `user.json` | User profile and preferences |
-| `routines.json` | Named lighting presets |
+| `routines.json` | Named lighting presets (can include `"mode": "candle"`) |
 | `calendars.json` | Calendars to monitor + alert light preferences |
 | `schedule.json` | Pending scheduled transitions |
 | `weather.json` | Location for weather data |
 | `weather_cache.json` | Cached weather (refreshed every 30 min) |
 | `light_map.json` | Circadian zone → light name mapping |
-| `voice.json` | Voice model configuration |
+| `voice.json` | STT model + TTS voice configuration |
 | `history` | CLI command history |
+| `voice.log` | Voice pipeline timing logs |
 | `lux.sock` | Daemon Unix socket |
 | `daemon.log` | Daemon log output |
 
@@ -235,6 +268,7 @@ Hey Lux exposes all its lighting tools as an MCP server in the `heylux/mcp/` pac
 from heylux.mcp.hue import ALL_HUE_TOOLS
 from heylux.mcp.circadian import get_circadian_recommendation
 from heylux.mcp.weather_tools import ALL_WEATHER_TOOLS
+from heylux.mcp.ambient import ALL_AMBIENT_TOOLS
 ```
 
 See **[MCP_SERVER.md](MCP_SERVER.md)** for the full tool reference (20+ tools) and integration guide.

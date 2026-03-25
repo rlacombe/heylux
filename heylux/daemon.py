@@ -199,9 +199,11 @@ async def _handle_ambient(shortcut_result: str) -> str:
     """
     # Parse optional light name and fade duration from sentinel
     # Format: SENTINEL or SENTINEL:light_name or SENTINEL:light_name:fade_minutes
+    # Only parse if it starts with a sentinel prefix (avoid splitting routine descriptions)
     light_name = ""
     fade_minutes = 0.0
-    if ":" in shortcut_result:
+    is_sentinel = shortcut_result.startswith("__") and "__:" in shortcut_result or shortcut_result.startswith("__") and shortcut_result.endswith("__")
+    if is_sentinel and ":" in shortcut_result:
         parts = shortcut_result.split(":", 2)
         shortcut_result = parts[0]
         light_name = parts[1] if len(parts) > 1 else ""
