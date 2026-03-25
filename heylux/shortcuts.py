@@ -42,6 +42,10 @@ def _clean_voice_text(text: str) -> str:
     text = re.sub(r'\s+(please|for me|for us)\s*$', '', text).strip()
     # Strip leading filler
     text = re.sub(r'^(can you |could you |please )+(set |turn |put |switch )?', '', text).strip()
+    # "turn my lights to X" / "set my room to X" → "X"
+    m = re.match(r'^(?:set|turn|put|switch)\s+(?:my |the |our )?(?:lights?|room|lamps?)\s+to\s+(.+)$', text)
+    if m:
+        text = m.group(1)
     # "set X to candle" / "turn X to candle" → "candle on X"
     m = re.match(r'^(?:set|turn|put|switch)\s+(.+?)\s+to\s+(candle|candlelight|candle mode|breathe|breathing)$', text)
     if m:
