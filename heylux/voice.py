@@ -322,8 +322,9 @@ def _get_tts_model():
 
 
 def _ensure_tts():
-    """Check TTS backend availability."""
+    """Check TTS backend availability and pre-start worker."""
     _get_tts_model()
+    warm_kokoro_worker()
 
 
 def _clean_for_tts(text: str) -> str:
@@ -406,63 +407,152 @@ def _speak_one(text: str) -> None:
     log.info(f"[timing] tts_say={_time.monotonic() - t0:.2f}s")
 
 
-def _speak_kokoro(text: str, _epoch: int = 0) -> None:
-    """Generate and play speech using Kokoro TTS in a subprocess.
+def _speak_kokoro(text: str) -> None:
+    """Generate and play speech using persistent Kokoro TTS worker subprocess.
 
-    Runs in a separate process to isolate Metal GPU operations from the
-    main process (prevents segfaults when mlx-whisper and Kokoro compete
-    for GPU memory).
+    The worker process stays alive between calls — model is loaded once,
+    subsequent generations are fast (~200ms).
     """
     import tempfile
 
     config = _get_stt_config()
     voice = config.get("kokoro_voice", KOKORO_VOICE)
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(text)
-        txt_path = f.name
+    worker = _get_kokoro_worker()
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         wav_path = f.name
 
     try:
-        result = subprocess.run(
-            [sys.executable, "-c", _KOKORO_SUBPROCESS_SCRIPT,
-             txt_path, wav_path, voice],
-            capture_output=True,
-            timeout=15,
-        )
-        if result.returncode != 0:
-            stderr = result.stderr.decode()[:200] if result.stderr else ""
-            raise RuntimeError(f"Kokoro subprocess failed (rc={result.returncode}): {stderr}")
+        # Send request to persistent worker
+        request = json.dumps({"text": text, "voice": voice, "wav_path": wav_path}) + "\n"
+        worker.stdin.write(request.encode())
+        worker.stdin.flush()
+
+        # Wait for response
+        response_line = worker.stdout.readline()
+        if not response_line:
+            raise RuntimeError("Kokoro worker died")
+
+        response = json.loads(response_line.decode())
+        if response.get("error"):
+            raise RuntimeError(f"Kokoro worker: {response['error']}")
 
         subprocess.run(
             ["afplay", wav_path],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+    except (BrokenPipeError, OSError):
+        # Worker died — reset and retry once
+        _kill_kokoro_worker()
+        raise RuntimeError("Kokoro worker crashed, will restart on next call")
     finally:
-        Path(txt_path).unlink(missing_ok=True)
         Path(wav_path).unlink(missing_ok=True)
 
 
-# Script run in a subprocess for Kokoro TTS generation.
-# Isolates Metal GPU operations from the main process.
-_KOKORO_SUBPROCESS_SCRIPT = """\
-import sys, contextlib, io
-txt_path, wav_path, voice = sys.argv[1], sys.argv[2], sys.argv[3]
+# ---------------------------------------------------------------------------
+# Persistent Kokoro worker subprocess
+# ---------------------------------------------------------------------------
 
-text = open(txt_path).read()
+_kokoro_worker = None
 
+
+def _get_kokoro_worker():
+    """Get or start the persistent Kokoro TTS worker subprocess."""
+    global _kokoro_worker
+    if _kokoro_worker is not None and _kokoro_worker.poll() is None:
+        return _kokoro_worker
+
+    log.info("Starting persistent Kokoro TTS worker...")
+    _kokoro_worker = subprocess.Popen(
+        [sys.executable, "-c", _KOKORO_WORKER_SCRIPT],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait for "ready" signal
+    ready = _kokoro_worker.stdout.readline()
+    if not ready or b"ready" not in ready:
+        _kokoro_worker.kill()
+        _kokoro_worker = None
+        raise RuntimeError("Kokoro worker failed to start")
+    log.info("Kokoro TTS worker ready")
+    return _kokoro_worker
+
+
+def _kill_kokoro_worker():
+    """Kill the persistent Kokoro worker."""
+    global _kokoro_worker
+    if _kokoro_worker is not None:
+        try:
+            _kokoro_worker.kill()
+        except Exception:
+            pass
+        _kokoro_worker = None
+
+
+def warm_kokoro_worker():
+    """Pre-start the Kokoro worker and warm the pipeline.
+
+    Call during startup alongside ensure_model(). The first generation
+    triggers pipeline compilation (~1.5s), so we do a dummy generation
+    here so the first real TTS call is instant (~0.1s).
+    """
+    if _tts_backend != "kokoro":
+        return
+    try:
+        import tempfile
+        worker = _get_kokoro_worker()
+        config = _get_stt_config()
+        voice = config.get("kokoro_voice", KOKORO_VOICE)
+        # Dummy generation to warm the pipeline (first call compiles it)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            wav_path = f.name
+        request = json.dumps({"text": ".", "voice": voice, "wav_path": wav_path}) + "\n"
+        worker.stdin.write(request.encode())
+        worker.stdin.flush()
+        worker.stdout.readline()  # wait for completion
+        Path(wav_path).unlink(missing_ok=True)
+        log.info("Kokoro pipeline warmed up")
+    except Exception as e:
+        log.warning(f"Failed to warm Kokoro worker: {e}")
+
+
+# Worker script: loads model once, then loops reading JSON requests from stdin.
+_KOKORO_WORKER_SCRIPT = """\
+import sys, json, contextlib, io
+
+# Load model once at startup
 with contextlib.redirect_stdout(io.StringIO()):
     from mlx_audio.tts.utils import load_model
-    model = load_model("mlx-community/Kokoro-82M-bf16")
     import numpy as np, soundfile as sf
-    chunks = []
-    for result in model.generate(text, voice=voice):
-        chunks.append(result.audio)
-    if chunks:
-        sf.write(wav_path, np.concatenate(chunks), 24000)
+    model = load_model("mlx-community/Kokoro-82M-bf16")
+
+# Signal ready
+sys.stdout.buffer.write(b'{"ready": true}\\n')
+sys.stdout.buffer.flush()
+
+# Process requests
+for line in sys.stdin.buffer:
+    try:
+        req = json.loads(line.decode())
+        text = req["text"]
+        voice = req["voice"]
+        wav_path = req["wav_path"]
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            chunks = []
+            for result in model.generate(text, voice=voice):
+                chunks.append(result.audio)
+            if chunks:
+                sf.write(wav_path, np.concatenate(chunks), 24000)
+
+        sys.stdout.buffer.write(b'{"ok": true}\\n')
+        sys.stdout.buffer.flush()
+    except Exception as e:
+        sys.stdout.buffer.write(json.dumps({"error": str(e)}).encode() + b'\\n')
+        sys.stdout.buffer.flush()
 """
 
 
