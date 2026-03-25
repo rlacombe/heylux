@@ -388,13 +388,18 @@ def _ensure_tts():
 
 
 def _clean_for_tts(text: str) -> str:
-    """Strip markdown and emoji from text for TTS."""
+    """Clean and enhance text for natural TTS output."""
     import re as _re
     clean = text.replace("**", "").replace("*", "").replace("`", "")
+    # Strip emoji
     clean = _re.sub(
         r'[\U0001F300-\U0001F9FF\U00002600-\U000027BF\U0000FE00-\U0000FEFF\U0001FA00-\U0001FAFF]+',
         '', clean
     ).strip()
+    # Add natural pauses: "X. Y" → "X... Y" for breathing room between phrases
+    clean = _re.sub(r'\.\s+', '... ', clean)
+    # Ensure exclamations have punch
+    clean = _re.sub(r'!\s*$', '!', clean)
     if len(clean) > 500:
         clean = clean[:500] + "..."
     return clean

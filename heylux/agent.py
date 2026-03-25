@@ -213,28 +213,30 @@ async def _send_to_daemon(prompt: str) -> None:
         await writer.wait_closed()
 
 
-def _send_with_tts(prompt: str, speak_fn) -> None:
-    """Send a prompt and speak the response aloud."""
+def _send_with_tts(prompt: str, speak_fn) -> dict:
+    """Send a prompt and speak the response aloud. Returns timing dict."""
     if not _daemon_running():
         _start_daemon()
 
     try:
-        asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
+        return asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
     except (ConnectionRefusedError, FileNotFoundError):
         console.print("[lux.warn]Connection lost. Restarting daemon...[/lux.warn]")
         _stop_daemon()
         time.sleep(0.5)
         _start_daemon()
-        asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
+        return asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
 
 
-async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
-    """Send prompt in voice mode. Stream text to TTS as sentences arrive."""
+async def _send_to_daemon_tts(prompt: str, speak_fn) -> dict:
+    """Send prompt in voice mode. Returns timing dict with tool/text timestamps."""
     import time as _time
     import logging
     _log = logging.getLogger("heylux.voice")
 
     t0 = _time.monotonic()
+    timings = {"t0": t0, "first_tool": None, "last_tool": None, "first_text": None}
+
     reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
     _log.info(f"[daemon] connected in {_time.monotonic() - t0:.2f}s")
 
@@ -244,7 +246,6 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
         _log.info(f"[daemon] sent prompt: '{prompt[:60]}'")
 
         first_text = True
-        t_first_text = None
         while True:
             line = await asyncio.wait_for(reader.readline(), timeout=SEND_TIMEOUT)
             if not line:
@@ -254,8 +255,8 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
 
             if msg["type"] == "text":
                 if first_text:
-                    t_first_text = _time.monotonic()
-                    _log.info(f"[daemon] first text at {t_first_text - t0:.2f}s")
+                    timings["first_text"] = _time.monotonic()
+                    _log.info(f"[daemon] first text at {timings['first_text'] - t0:.2f}s")
                     console.print()
                     console.print("[lux.label]Lux:[/lux.label]")
                     first_text = False
@@ -263,7 +264,11 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
                 console.print(Markdown(msg["text"]), style="lux.text")
                 speak_fn(msg["text"])
             elif msg["type"] == "tool":
-                _log.info(f"[daemon] tool: {msg['name']} at {_time.monotonic() - t0:.2f}s")
+                now = _time.monotonic()
+                if timings["first_tool"] is None:
+                    timings["first_tool"] = now
+                timings["last_tool"] = now
+                _log.info(f"[daemon] tool: {msg['name']} at {now - t0:.2f}s")
                 console.print(f"[lux.tool]  -> {msg['name']}[/lux.tool]")
             elif msg["type"] == "error":
                 _log.info(f"[daemon] error: {msg['text']}")
@@ -277,6 +282,8 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
     finally:
         writer.close()
         await writer.wait_closed()
+
+    return timings
 
 
 def _send(prompt: str) -> None:
@@ -536,24 +543,36 @@ def _wake_mode() -> None:
         t_heard = _time.monotonic()
         console.print(f"[lux.user]You:[/lux.user] {command}\n")
 
-        _send_with_tts(command, speak)
+        timings = _send_with_tts(command, speak)
 
         t_responded = _time.monotonic()
         wait_for_speech()
 
         t_done = _time.monotonic()
+
+        # Key metrics
+        t0_daemon = timings.get("t0", t_heard)
+        t_first_tool = timings.get("first_tool")
+        t_last_tool = timings.get("last_tool")
+        t_first_text = timings.get("first_text")
+
+        # Metric 1: speech ended → lights change (first tool call)
+        lights_delay = (t_first_tool - t_heard) if t_first_tool else None
+        # Metric 2: lights done → voice starts (last tool → first text → TTS)
+        voice_delay = (t_done - t_last_tool) if t_last_tool else None
+
         _log.info(
             f"[timing] total={t_done - t_start:.1f}s "
-            f"(stt={t_heard - t_start:.1f}s, "
-            f"daemon={t_responded - t_heard:.1f}s, "
-            f"tts={t_done - t_responded:.1f}s)"
+            f"lights_delay={lights_delay:.1f}s " if lights_delay else ""
+            f"voice_delay={voice_delay:.1f}s" if voice_delay else ""
         )
-        console.print(
-            f"[lux.dim]{t_done - t_start:.1f}s "
-            f"(listen {t_heard - t_start:.1f}s + "
-            f"process {t_responded - t_heard:.1f}s + "
-            f"speak {t_done - t_responded:.1f}s)[/lux.dim]"
-        )
+
+        parts = [f"{t_done - t_start:.1f}s"]
+        if lights_delay is not None:
+            parts.append(f"lights {lights_delay:.1f}s")
+        if voice_delay is not None:
+            parts.append(f"voice {voice_delay:.1f}s")
+        console.print(f"[lux.dim]{' | '.join(parts)}[/lux.dim]")
         console.print()
 
 
