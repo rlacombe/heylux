@@ -1,4 +1,4 @@
-# Hey Lux!
+# "Hey Lux!"
 
 **Voice-controlled smart lighting powered by circadian science and Claude**
 
@@ -62,7 +62,7 @@ Lux: Purple and green coding vibes. Happy hacking!
 - **Instant commands** — "lights off", "bedtime", "focus", "brighter" execute directly (<1s)
 - **Named routines** — "bedtime", "morning", "focus", "coding" — customizable through conversation
 - **Ambient modes** — "candle" for physics-based flickering candlelight, "breathe" for slow breathing glow. Routines can include ambient modes.
-- **Natural language** — "make it Rilakkuma-colored", "sunset in my room" via Claude
+- **Natural language** — "make it rainbow-colored", "sunset in my room" via Claude
 - **Circadian automation** — time-based lighting grounded in melanopsin sensitivity and melatonin research
 - **Weather-adaptive** — boosts brightness on cloudy days, shifts circadian curve to actual sunrise/sunset
 - **Scheduling** — "sunrise at 8am tomorrow" — gradual transitions that run while you sleep
