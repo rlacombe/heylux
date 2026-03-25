@@ -127,14 +127,12 @@ Make sure `~/.local/bin` is in your `PATH`.
 
 ### Voice mode setup
 
-Voice requires additional dependencies (Whisper + sounddevice):
-
 ```bash
 uv sync --extra voice
 lux listen                 # say "Hey Lux" followed by a command
 ```
 
-First run downloads the Whisper base model (~140MB). Requires an arm64 Python on Apple Silicon (`uv python install 3.12`).
+First run downloads the STT and TTS models (~1GB total). Requires Apple Silicon (M1+).
 
 ## Usage
 
@@ -243,11 +241,10 @@ See **[MCP_SERVER.md](MCP_SERVER.md)** for the full tool reference (20+ tools) a
 
 ## Requirements
 
-- Python 3.12+ (arm64 on Apple Silicon for voice mode)
+- macOS on Apple Silicon (M1+)
 - [uv](https://docs.astral.sh/uv/)
-- A Philips Hue Bridge + Hue bulbs
+- Philips Hue Bridge + Hue bulbs
 - Claude Code subscription (Pro or Max plan)
-- For voice: `uv sync --extra voice` (adds Whisper + sounddevice)
 
 ## Disclaimer
 
