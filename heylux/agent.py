@@ -207,38 +207,45 @@ async def _send_to_daemon(prompt: str) -> None:
             elif msg["type"] == "done":
                 break
     except asyncio.TimeoutError:
-        console.print("[lux.error]Daemon not responding (timed out after 30s).[/lux.error]")
+        console.print(f"[lux.error]Daemon not responding (timed out after {SEND_TIMEOUT}s).[/lux.error]")
     finally:
         writer.close()
         await writer.wait_closed()
 
 
-def _send_with_tts(prompt: str, speak_fn) -> None:
-    """Send a prompt and speak the response aloud."""
+def _send_with_tts(prompt: str, speak_fn) -> dict:
+    """Send a prompt and speak the response aloud. Returns timing dict."""
     if not _daemon_running():
         _start_daemon()
 
     try:
-        asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
+        return asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
     except (ConnectionRefusedError, FileNotFoundError):
         console.print("[lux.warn]Connection lost. Restarting daemon...[/lux.warn]")
         _stop_daemon()
         time.sleep(0.5)
         _start_daemon()
-        asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
+        return asyncio.run(_send_to_daemon_tts(prompt, speak_fn))
 
 
-async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
-    """Send prompt in voice mode. Speak first text block, display the rest."""
+async def _send_to_daemon_tts(prompt: str, speak_fn) -> dict:
+    """Send prompt in voice mode. Returns timing dict with tool/text timestamps."""
+    import time as _time
+    import logging
+    _log = logging.getLogger("heylux.voice")
+
+    t0 = _time.monotonic()
+    timings = {"t0": t0, "first_tool": None, "last_tool": None, "first_text": None}
+
     reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
+    _log.info(f"[daemon] connected in {_time.monotonic() - t0:.2f}s")
 
     try:
-        # Send with voice flag so daemon adjusts Claude's behavior
         writer.write(json.dumps({"prompt": prompt, "voice": True}).encode() + b"\n")
         await writer.drain()
+        _log.info(f"[daemon] sent prompt: '{prompt[:60]}'")
 
         first_text = True
-        text_blocks = []
         while True:
             line = await asyncio.wait_for(reader.readline(), timeout=SEND_TIMEOUT)
             if not line:
@@ -248,30 +255,35 @@ async def _send_to_daemon_tts(prompt: str, speak_fn) -> None:
 
             if msg["type"] == "text":
                 if first_text:
+                    timings["first_text"] = _time.monotonic()
+                    _log.info(f"[daemon] first text at {timings['first_text'] - t0:.2f}s")
                     console.print()
                     console.print("[lux.label]Lux:[/lux.label]")
                     first_text = False
+                _log.info(f"[daemon] text: '{msg['text'][:60]}'")
                 console.print(Markdown(msg["text"]), style="lux.text")
-                text_blocks.append(msg["text"])
-                # Speak the first block immediately (the ack before tools)
-                if len(text_blocks) == 1:
-                    speak_fn(msg["text"])
+                speak_fn(msg["text"])
             elif msg["type"] == "tool":
+                now = _time.monotonic()
+                if timings["first_tool"] is None:
+                    timings["first_tool"] = now
+                timings["last_tool"] = now
+                _log.info(f"[daemon] tool: {msg['name']} at {now - t0:.2f}s")
                 console.print(f"[lux.tool]  -> {msg['name']}[/lux.tool]")
             elif msg["type"] == "error":
+                _log.info(f"[daemon] error: {msg['text']}")
                 console.print(f"[lux.error]Error: {msg['text']}[/lux.error]")
             elif msg["type"] == "done":
+                _log.info(f"[daemon] done at {_time.monotonic() - t0:.2f}s")
                 break
 
-        # Speak the last block too (the confirmation after tools)
-        if len(text_blocks) > 1:
-            speak_fn(text_blocks[-1])
-
     except asyncio.TimeoutError:
-        console.print("[lux.error]Daemon not responding (timed out).[/lux.error]")
+        console.print(f"[lux.error]Daemon not responding (timed out after {SEND_TIMEOUT}s).[/lux.error]")
     finally:
         writer.close()
         await writer.wait_closed()
+
+    return timings
 
 
 def _send(prompt: str) -> None:
@@ -307,6 +319,11 @@ def _save_readline() -> None:
         pass
 
 
+# ANSI-colored prompt for input() — uses \001/\002 markers so readline
+# correctly calculates visible prompt length (prevents cursor corruption).
+_PROMPT = "\001\033[1;38;2;125;207;255m\002You:\001\033[0m\002 "
+
+
 def _interactive() -> None:
     """Interactive REPL — all messages go through the daemon."""
     if not _daemon_running():
@@ -323,7 +340,10 @@ def _interactive() -> None:
     try:
         while True:
             try:
-                user_input = console.input("[lux.user]You:[/lux.user] ").strip()
+                # Use input() with ANSI prompt + readline markers, not
+                # console.input() — Rich markup confuses readline's cursor
+                # positioning and causes the prompt to disappear on long lines.
+                user_input = input(_PROMPT).strip()
             except (EOFError, KeyboardInterrupt):
                 console.print("\n[lux.dim]Goodbye![/lux.dim]")
                 break
@@ -339,7 +359,7 @@ def _interactive() -> None:
                 _do_voice_in_repl()
                 continue
 
-            readline.add_history(user_input)
+            # input() already adds to readline history — don't double-add
 
             console.print()
             _send(user_input)
@@ -350,9 +370,17 @@ def _interactive() -> None:
 
 def main() -> None:
     """CLI entry point."""
-    # Suppress noisy multiprocessing semaphore leak warnings on exit
     import warnings
+    import logging
     warnings.filterwarnings("ignore", message=".*resource_tracker.*leaked semaphore.*")
+    # Log to file for debugging voice pipeline
+    log_path = CONFIG_DIR / "voice.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(log_path),
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(message)s",
+    )
 
     args = sys.argv[1:]
 
@@ -401,48 +429,51 @@ def main() -> None:
         _send(prompt)
 
 
-def _load_voice_model():
-    """Load Whisper model with a spinner. Returns (listen_once, speak) or (None, None)."""
+# ---------------------------------------------------------------------------
+# Voice helpers — shared loading, cached across calls
+# ---------------------------------------------------------------------------
+
+_voice_ready = False
+
+
+def _ensure_voice() -> bool:
+    """Load voice models (STT + TTS) once, cached for subsequent calls.
+
+    Returns True if voice is ready, False if deps are missing.
+    """
+    global _voice_ready
+    if _voice_ready:
+        return True
+
     try:
-        from heylux.voice import ensure_model, listen_once, speak
-        import heylux.voice as voice_mod
-        voice_mod._console = console
-    except ImportError:
-        console.print(
-            "[lux.error]Voice dependencies not installed.[/lux.error]\n"
-            "[lux.dim]Install with: uv sync --extra voice[/lux.dim]"
-        )
-        return None, None
-
-    with console.status("[lux.highlight]Loading voice model...", spinner="dots"):
-        try:
-            ensure_model()
-        except ImportError as e:
-            console.print(f"[lux.error]{e}[/lux.error]")
-            return None, None
-
-    return listen_once, speak
-
-
-def _do_voice_in_repl() -> None:
-    """Handle a single voice command from within the REPL."""
-    try:
-        from heylux.voice import ensure_model, listen_once, speak
+        from heylux.voice import ensure_model, _ensure_tts
         import heylux.voice as voice_mod
         voice_mod._console = console
     except ImportError:
         console.print(
             "[lux.error]Voice deps not installed.[/lux.error] "
-            "[lux.dim]Run: uv sync --extra voice[/lux.dim]\n"
+            "[lux.dim]Run: uv sync --extra voice[/lux.dim]"
         )
-        return
+        return False
 
     with console.status("[lux.highlight]Loading voice model...", spinner="dots"):
         try:
             ensure_model()
+            _ensure_tts()
         except ImportError as e:
-            console.print(f"[lux.error]{e}[/lux.error]\n")
-            return
+            console.print(f"[lux.error]{e}[/lux.error]")
+            return False
+
+    _voice_ready = True
+    return True
+
+
+def _do_voice_in_repl() -> None:
+    """Handle a single voice command from within the REPL."""
+    if not _ensure_voice():
+        return
+
+    from heylux.voice import listen_once, speak, wait_for_speech
 
     console.print("[lux.highlight]Listening...[/lux.highlight]")
     try:
@@ -454,7 +485,6 @@ def _do_voice_in_repl() -> None:
     if text:
         console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
         _send_with_tts(text, speak)
-        from heylux.voice import wait_for_speech
         wait_for_speech()
         console.print()
     else:
@@ -463,26 +493,16 @@ def _do_voice_in_repl() -> None:
 
 def _wake_mode() -> None:
     """Always-on wake word mode — records speech, checks for 'Hey Lux', executes."""
-    try:
-        from heylux.voice import (
-            ensure_model,
-            listen_for_wake_command,
-            listen_once,
-            speak,
-            wait_for_speech,
-            stop_speech,
-        )
-        import heylux.voice as voice_mod
-        voice_mod._console = console
-    except ImportError:
-        console.print(
-            "[lux.error]Voice deps not installed.[/lux.error] "
-            "[lux.dim]Run: uv sync --extra voice[/lux.dim]"
-        )
+    if not _ensure_voice():
         return
 
-    with console.status("[lux.highlight]Loading voice model...", spinner="dots"):
-        ensure_model()
+    from heylux.voice import (
+        listen_for_wake_command,
+        listen_once,
+        speak,
+        wait_for_speech,
+        stop_speech,
+    )
 
     if not _daemon_running():
         _start_daemon()
@@ -500,15 +520,18 @@ def _wake_mode() -> None:
         '[lux.text]say "Hey Lux" followed by a command. Ctrl+C to exit.[/lux.text]\n'
     )
 
+    import time as _time
+    import logging
+    _log = logging.getLogger("heylux.voice")
+
     while True:
+        t_start = _time.monotonic()
         command = listen_for_wake_command()
 
         if command is None:
-            # No wake word detected — keep listening
             continue
 
         if command == "":
-            # Just said "Hey Lux" with no command — prompt for more
             speak("Listening.")
             wait_for_speech()
             console.print("[lux.highlight]Listening...[/lux.highlight]")
@@ -517,23 +540,56 @@ def _wake_mode() -> None:
                 continue
             command = text
 
+        t_heard = _time.monotonic()
         console.print(f"[lux.user]You:[/lux.user] {command}\n")
-        _send_with_tts(command, speak)
+
+        timings = _send_with_tts(command, speak)
+
+        t_responded = _time.monotonic()
         wait_for_speech()
+
+        t_done = _time.monotonic()
+
+        # Key metrics
+        t0_daemon = timings.get("t0", t_heard)
+        t_first_tool = timings.get("first_tool")
+        t_last_tool = timings.get("last_tool")
+        t_first_text = timings.get("first_text")
+
+        # Metric 1: speech ended → lights change (first tool call)
+        lights_delay = (t_first_tool - t_heard) if t_first_tool else None
+        # Metric 2: lights done → voice starts (last tool → first text → TTS)
+        voice_delay = (t_done - t_last_tool) if t_last_tool else None
+
+        _log.info(
+            f"[timing] total={t_done - t_start:.1f}s "
+            f"lights_delay={lights_delay:.1f}s " if lights_delay else ""
+            f"voice_delay={voice_delay:.1f}s" if voice_delay else ""
+        )
+
+        parts = [f"{t_done - t_start:.1f}s"]
+        if lights_delay is not None:
+            parts.append(f"lights {lights_delay:.1f}s")
+        if voice_delay is not None:
+            parts.append(f"voice {voice_delay:.1f}s")
+        console.print(f"[lux.dim]{' | '.join(parts)}[/lux.dim]")
         console.print()
 
-        # Multi-turn: keep listening for follow-ups without wake word
-        while True:
-            console.print("[lux.highlight]Listening...[/lux.highlight]")
-            text = listen_once()
-            if text:
-                console.print(f"\n[lux.user]You:[/lux.user] {text}\n")
-                _send_with_tts(text, speak)
-                wait_for_speech()
-                console.print()
-            else:
-                # Silence — back to waiting for wake word
-                break
+
+def voice_main() -> None:
+    """Entry point for lux-voice — goes straight to wake word mode."""
+    import warnings
+    import logging
+    warnings.filterwarnings("ignore", message=".*resource_tracker.*leaked semaphore.*")
+    # Log to file so we can debug voice pipeline performance
+    log_path = CONFIG_DIR / "voice.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=str(log_path),
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(message)s",
+    )
+    _wake_mode()
 
 
 if __name__ == "__main__":

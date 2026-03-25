@@ -30,9 +30,37 @@ def _parse_duration(text: str) -> tuple[str, float]:
     return text, 0
 
 
+def _clean_voice_text(text: str) -> str:
+    """Strip filler words that voice transcription adds but don't affect intent.
+
+    Handles: "the", "my", "please", "for me", trailing punctuation,
+    leading politeness ("can you", "could you please"), and inverted
+    forms like "set the nightstand to candle".
+    """
+    # Strip trailing punctuation and filler phrases
+    text = re.sub(r'[.,!?]+$', '', text).strip()
+    text = re.sub(r'\s+(please|for me|for us)\s*$', '', text).strip()
+    # Strip leading filler
+    text = re.sub(r'^(can you |could you |please )+(set |turn |put |switch )?', '', text).strip()
+    # "turn my lights to X" / "set my room to X" → "X"
+    m = re.match(r'^(?:set|turn|put|switch)\s+(?:my |the |our )?(?:lights?|room|lamps?)\s+to\s+(.+)$', text)
+    if m:
+        text = m.group(1)
+    # "set X to candle" / "turn X to candle" → "candle on X"
+    m = re.match(r'^(?:set|turn|put|switch)\s+(.+?)\s+to\s+(candle|candlelight|candle mode|breathe|breathing)$', text)
+    if m:
+        text = f"{m.group(2)} on {m.group(1)}"
+    # Strip articles/possessives before light names (after "on")
+    text = re.sub(r'\bon\s+(the|my|our)\s+', 'on ', text)
+    # Strip stray articles anywhere ("activate the coding mode" → "activate coding mode")
+    text = re.sub(r'\b(the|a)\s+', '', text).strip()
+    return text
+
+
 def try_shortcut(text: str) -> str | None:
     """Try to handle a command directly. Returns response text, or None to fall through to LLM."""
     text = text.strip().lower()
+    text = _clean_voice_text(text)
 
     # --- Ambient modes (optionally targeting specific lights and duration) ---
     # Exact matches first, then parameterized
@@ -101,6 +129,8 @@ def try_shortcut(text: str) -> str | None:
     # --- Circadian ---
     if text in ("circadian", "set for now", "set to now", "optimize", "auto"):
         return _apply_circadian()
+    if re.search(r'\b(circadian|circadium|circanium)\b', text):
+        return _apply_circadian()
 
     # --- Routines ---
     if text in ("routines", "list routines"):
@@ -112,10 +142,21 @@ def try_shortcut(text: str) -> str | None:
             lines.append(f"  {name} — {desc}")
         return "\n".join(lines)
 
-    # Try matching a routine name directly
+    # Try matching a routine name directly, or with "mode" suffix
     result = run_routine(text)
     if result is not None:
         return result
+    # "coding mode" → try "coding", "focus mode" → try "focus"
+    if text.endswith(" mode"):
+        result = run_routine(text[:-5])
+        if result is not None:
+            return result
+    # "activate coding" → try "coding"
+    for prefix in ("activate ", "set ", "switch to ", "turn on "):
+        if text.startswith(prefix):
+            result = run_routine(text[len(prefix):].rstrip(" mode"))
+            if result is not None:
+                return result
 
     return None
 

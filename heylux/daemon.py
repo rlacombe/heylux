@@ -20,7 +20,6 @@ from claude_agent_sdk import (
 )
 
 from heylux.alerts import alert_loop
-from heylux.pulse import breathing_mode_loop, candle_mode_loop
 from heylux.routines import ALL_ROUTINE_TOOLS
 from heylux.scheduler import scheduler_loop
 from heylux.shortcuts import (
@@ -28,6 +27,12 @@ from heylux.shortcuts import (
     SHORTCUT_BREATHE_START,
     SHORTCUT_BREATHE_STOP,
     SHORTCUT_CANDLE_START,
+)
+from heylux.mcp.ambient import (
+    ALL_AMBIENT_TOOLS,
+    start_candle,
+    start_breathe,
+    stop_ambient,
 )
 from heylux.mcp.calendar_tools import ALL_CALENDAR_TOOLS
 from heylux.mcp.circadian import get_circadian_recommendation, configure_light_map
@@ -40,9 +45,6 @@ from heylux.mcp.scheduler_tools import ALL_SCHEDULER_TOOLS
 SOCKET_PATH = Path.home() / ".config" / "heylux" / "lux.sock"
 PID_FILE = Path.home() / ".config" / "heylux" / "lux.pid"
 BASE_SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.md").read_text()
-
-# Background breathing mode task
-_breathing_task: asyncio.Task | None = None
 
 
 def _build_system_prompt() -> str:
@@ -94,16 +96,22 @@ def _refresh_dynamic_prompt(options: ClaudeAgentOptions) -> None:
 VOICE_MODE_PROMPT = """
 
 ## Voice Mode Active
-The user is giving voice commands via microphone. This is a command interface, not a conversation.
+The user is speaking voice commands. Your response will be read aloud by TTS.
+SPEED IS CRITICAL. Every word costs playback time.
 
-STRICT RULES:
-- You receive a command, execute it, and confirm briefly. That's it.
-- MAX 1 sentence before tools (what you're doing), MAX 1 sentence after (done + result).
-- NO emoji, NO markdown, NO bullet lists, NO asterisks.
-- NO pleasantries, NO "let me know if you need anything", NO follow-up questions.
-- NEVER list individual lights. NEVER explain the science.
-- Be like a quick voice assistant: command in, confirmation out.
-- Example: "Setting coding mode." → tools → "Done, purple on desk and lantern, green on the rest."
+RULES:
+- Call tools FIRST. NO text before tools.
+- After tools, reply with MAX 8 WORDS. Format: "<color/mood>. <send-off>!"
+- Use parallel tool_use blocks when setting multiple lights (faster than sequential).
+- NO emoji (spoken as words), NO markdown, NO light names.
+- Vary send-offs.
+
+GOOD: "Green and purple hues. Happy coding!"
+GOOD: "Warm amber glow. Sweet dreams!"
+GOOD: "Lights off. Goodnight!"
+BAD: "Setting up..." (text before tools)
+BAD: "Your room is now glowing in warm golden ambers and soft peach..." (too long)
+BAD: "💜💚" (emoji spoken as words)
 """
 
 # Use Haiku in voice mode for speed
@@ -120,7 +128,7 @@ def _inject_voice_mode(options: ClaudeAgentOptions) -> None:
         options.system_prompt += VOICE_MODE_PROMPT
     _original_model = options.model
     options.model = VOICE_MODEL
-    options.max_turns = 3  # keep it fast
+    options.max_turns = 2  # tool calls + response, nothing more
 
 
 def _remove_voice_mode(options: ClaudeAgentOptions) -> None:
@@ -138,6 +146,7 @@ def _build_options() -> ClaudeAgentOptions:
         get_circadian_recommendation,
         configure_light_map,
         *ALL_HUE_TOOLS,
+        *ALL_AMBIENT_TOOLS,
         *ALL_MEMORY_TOOLS,
         *ALL_ROUTINE_TOOLS,
         *ALL_CALENDAR_TOOLS,
@@ -162,21 +171,6 @@ def _build_options() -> ClaudeAgentOptions:
     )
 
 
-async def _stop_breathing() -> bool:
-    """Stop the breathing mode if active. Returns True if it was running."""
-    global _breathing_task
-    if _breathing_task is not None and not _breathing_task.done():
-        _breathing_task.cancel()
-        try:
-            await _breathing_task
-        except asyncio.CancelledError:
-            pass
-        _breathing_task = None
-        return True
-    _breathing_task = None
-    return False
-
-
 def _resolve_light_ids(light_name: str) -> list[int] | None:
     """Resolve a light name to IDs. Returns None for all lights."""
     if not light_name:
@@ -198,14 +192,18 @@ def _resolve_light_ids(light_name: str) -> list[int] | None:
 
 
 async def _handle_ambient(shortcut_result: str) -> str:
-    """Handle ambient mode start/stop signals from shortcuts."""
-    global _breathing_task
+    """Handle ambient mode start/stop signals from shortcuts.
 
+    Uses shared state from heylux.mcp.ambient so both shortcuts and
+    Claude tool calls manage the same ambient task.
+    """
     # Parse optional light name and fade duration from sentinel
     # Format: SENTINEL or SENTINEL:light_name or SENTINEL:light_name:fade_minutes
+    # Only parse if it starts with a sentinel prefix (avoid splitting routine descriptions)
     light_name = ""
     fade_minutes = 0.0
-    if ":" in shortcut_result:
+    is_sentinel = shortcut_result.startswith("__") and "__:" in shortcut_result or shortcut_result.startswith("__") and shortcut_result.endswith("__")
+    if is_sentinel and ":" in shortcut_result:
         parts = shortcut_result.split(":", 2)
         shortcut_result = parts[0]
         light_name = parts[1] if len(parts) > 1 else ""
@@ -219,17 +217,15 @@ async def _handle_ambient(shortcut_result: str) -> str:
     fade_label = f", fading out over {int(fade_minutes)}min" if fade_minutes else ""
 
     if shortcut_result == SHORTCUT_BREATHE_START:
-        await _stop_breathing()
-        _breathing_task = asyncio.create_task(breathing_mode_loop(light_ids))
+        await start_breathe(light_ids)
         return f"Breathing mode started{light_label}. Say 'stop' to end."
 
     if shortcut_result == SHORTCUT_CANDLE_START:
-        await _stop_breathing()
-        _breathing_task = asyncio.create_task(candle_mode_loop(light_ids, fade_out_minutes=fade_minutes))
+        await start_candle(light_ids, fade_out_minutes=fade_minutes)
         return f"Candle mode started{light_label}{fade_label}. Say 'stop' to end."
 
     if shortcut_result == SHORTCUT_BREATHE_STOP:
-        was_running = await _stop_breathing()
+        was_running = await stop_ambient()
         if was_running:
             return "Ambient mode stopped. Lights restored."
         # Not in ambient mode — just turn everything off
@@ -237,8 +233,9 @@ async def _handle_ambient(shortcut_result: str) -> str:
         return _all_off()
 
     # Any other shortcut: stop ambient mode if active
-    if _breathing_task is not None and not _breathing_task.done():
-        await _stop_breathing()
+    from heylux.mcp.ambient import _ambient_task
+    if _ambient_task is not None and not _ambient_task.done():
+        await stop_ambient()
 
     return shortcut_result
 
@@ -273,6 +270,18 @@ async def _handle_client(
             # Handle breathing mode start/stop
             shortcut_result = await _handle_ambient(shortcut_result)
 
+            # Check if the routine wants to start an ambient mode (candle/breathe)
+            from heylux.routines import pop_pending_ambient
+            pending = pop_pending_ambient()
+            if pending:
+                mode = pending["mode"]
+                light_ids = pending["light_ids"]
+                fade = pending.get("fade_out_minutes", 0)
+                if mode == "candle":
+                    await start_candle(light_ids, fade_out_minutes=fade)
+                elif mode == "breathe":
+                    await start_breathe(light_ids)
+
             writer.write(
                 json.dumps({"type": "text", "text": shortcut_result}).encode() + b"\n"
             )
@@ -281,36 +290,50 @@ async def _handle_client(
             return
 
         # Any non-shortcut command stops breathing mode
-        await _stop_breathing()
+        await stop_ambient()
 
         # Inject voice mode instructions if needed
         if voice_mode:
             _inject_voice_mode(options)
             # Prepend voice constraint directly to the prompt so Claude can't miss it
             prompt = (
-                "[VOICE MODE — this will be read aloud. "
-                "Reply in 1-2 short sentences ONLY. No emoji, no markdown, no bullet lists. "
-                "Be a quick voice assistant. "
-                "ALWAYS start by stating what you're about to do BEFORE calling any tool. "
-                "If the user asks for a mode that matches a saved routine name, "
-                "use list_routines to check, then apply it with the exact light settings. "
-                "Example: 'Setting your lights to coding mode.' then call the tools.]\n\n"
+                "[VOICE: Call tools FIRST with NO text before them. "
+                "After tools, reply with MAX 8 words total. "
+                "Format: '<color/mood>. <2-word send-off>!' "
+                "Example: 'Warm amber glow. Sweet dreams!' "
+                "If it matches a routine, use list_routines then apply it.]\n\n"
                 + prompt
             )
         else:
             _remove_voice_mode(options)
 
         # Tier 2: Claude via persistent ClaudeSDKClient
+        #
+        # In voice mode, accumulate all text into one block so TTS
+        # generates a single audio file (faster than multiple subprocess calls).
+        import re
+        _emoji_re = re.compile(
+            r'[\U0001F300-\U0001F9FF\U00002600-\U000027BF'
+            r'\U0000FE00-\U0000FEFF\U0001FA00-\U0001FAFF]+'
+        )
+        voice_text_parts = []
+
         await client.query(prompt)
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if hasattr(block, "text") and block.text:
-                        writer.write(
-                            json.dumps({"type": "text", "text": block.text}).encode()
-                            + b"\n"
-                        )
-                        await writer.drain()
+                        if voice_mode:
+                            # Accumulate text, strip emoji
+                            clean = _emoji_re.sub('', block.text).strip()
+                            if clean:
+                                voice_text_parts.append(clean)
+                        else:
+                            writer.write(
+                                json.dumps({"type": "text", "text": block.text}).encode()
+                                + b"\n"
+                            )
+                            await writer.drain()
                     elif hasattr(block, "name"):
                         writer.write(
                             json.dumps(
@@ -328,6 +351,14 @@ async def _handle_client(
                         + b"\n"
                     )
                     await writer.drain()
+
+        # In voice mode, send accumulated text as one block
+        if voice_mode and voice_text_parts:
+            full_text = " ".join(voice_text_parts)
+            writer.write(
+                json.dumps({"type": "text", "text": full_text}).encode() + b"\n"
+            )
+            await writer.drain()
 
         writer.write(json.dumps({"type": "done"}).encode() + b"\n")
         await writer.drain()
@@ -398,7 +429,7 @@ async def run_daemon() -> None:
             await stop.wait()
 
         # Shutdown background tasks
-        await _stop_breathing()
+        await stop_ambient()
         for task in (alert_task, scheduler_task):
             task.cancel()
             try:
