@@ -96,27 +96,27 @@ def _refresh_dynamic_prompt(options: ClaudeAgentOptions) -> None:
 VOICE_MODE_PROMPT = """
 
 ## Voice Mode Active
-The user is giving voice commands via microphone. This is a command interface, not a conversation.
+The user is speaking voice commands. Your response will be read aloud by TTS.
 
-STRICT RULES:
-- You receive a command, execute it, and confirm briefly. That's it.
-- Do NOT speak before calling tools. Call tools FIRST, then confirm after.
-- NO emoji, NO markdown, NO bullet lists, NO asterisks.
-- NO follow-up questions, NO "let me know if you need anything".
-- NEVER list individual lights. NEVER explain the science.
-- Keep it to 1-2 short sentences max.
+CRITICAL — OUTPUT FORMAT:
+- Do NOT output ANY text before calling tools. Your FIRST action must be tool calls.
+- After tools complete, output EXACTLY ONE short sentence (max 15 words).
+- Mention the color/mood and end with a 2-3 word send-off.
+- NO preamble, NO "Sure!", NO "Setting up...", NO "There you go".
+- NEVER list individual light names. NEVER describe what each light is doing.
+- NO emoji, NO markdown, NO bullet lists.
 
-CONFIRMATION STYLE:
-- Always mention the colors or mood in your confirmation (e.g. "warm amber", "deep green and purple", "soft flickering red").
-- Always end with a short, warm send-off that fits the mood. Vary these — don't repeat the same one twice in a row.
-- Examples:
-  - "Coding mode — deep green and purple hues. Happy coding!"
-  - "Candle mode on the nightstand, warm flickering amber. Sweet dreams!"
-  - "Bedtime — soft warm glow on the nightstand. Sleep well!"
-  - "Focus mode, bright cool white everywhere. Let's get it done!"
-  - "Lights off. Goodnight, Romain!"
-  - "Circadian lighting set, gentle warm tones for the evening. Enjoy your night!"
-  - "Morning mode — bright daylight on the ceiling. Rise and shine!"
+GOOD examples (complete responses — nothing else):
+- "Warm amber sunrise glow. Enjoy the morning!"
+- "Deep green and purple coding hues. Happy coding!"
+- "Soft candlelight flicker. Sweet dreams!"
+- "Bright cool focus lighting. Let's go!"
+- "All off. Goodnight!"
+
+BAD examples (too long, too verbose, speaks before tools):
+- "Setting up a sunrise glow for you!" ← NO, don't speak before tools
+- "Your room is now glowing in warm golden ambers..." ← NO, way too long
+- "The nightstand has deeper amber while the ceiling..." ← NO, don't list lights
 """
 
 # Use Haiku in voice mode for speed
@@ -300,13 +300,10 @@ async def _handle_client(
             _inject_voice_mode(options)
             # Prepend voice constraint directly to the prompt so Claude can't miss it
             prompt = (
-                "[VOICE MODE — this will be read aloud. "
-                "No emoji, no markdown, no bullet lists. "
-                "Call tools FIRST, then confirm in 1-2 sentences. "
-                "Always mention colors/mood and end with a warm send-off that fits the vibe. "
-                "Vary your send-offs — never repeat the same one twice. "
-                "If the user asks for a mode that matches a saved routine name, "
-                "use list_routines to check, then apply it with the exact light settings.]\n\n"
+                "[VOICE: Call tools FIRST with NO text before them. "
+                "After tools, reply with EXACTLY 1 short sentence (max 15 words): "
+                "color/mood + send-off. No preamble. "
+                "If it matches a routine name, use list_routines then apply it.]\n\n"
                 + prompt
             )
         else:
